@@ -1074,12 +1074,49 @@ function App() {
         .recommend-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
       }
       @media (max-width: 760px) {
-        .hero-grid { grid-template-columns: 1fr !important; }
-        .spend-result-grid, .recommend-grid { grid-template-columns: 1fr !important; }
-        .result-header-panel { padding: 34px 22px !important; }
-        .result-header-title { font-size: 42px !important; }
-        .result-analysis-top { grid-template-columns: 1fr !important; }
+      html, body, #root {
+        width: 100% !important;
+        overflow-x: hidden !important;
       }
+
+      .hero-grid,
+      .result-summary-grid,
+      .result-analysis-top,
+      .spend-result-grid,
+      .recommend-grid {
+        grid-template-columns: 1fr !important;
+      }
+
+      .result-header-panel {
+        padding: 28px 22px !important;
+        border-radius: 26px !important;
+      }
+
+      .result-header-title {
+        font-size: 34px !important;
+        line-height: 1.15 !important;
+      }
+
+      .recommend-card {
+        padding: 24px !important;
+        width: 100% !important;
+      }
+
+      .recommend-card h2 {
+        font-size: 26px !important;
+        line-height: 1.15 !important;
+        word-break: keep-all !important;
+      }
+
+      .card-visual-wrap > div {
+        width: 100% !important;
+        max-width: 260px !important;
+      }
+
+      button {
+        max-width: 100% !important;
+      }
+    }
       @keyframes growBar {
         from { transform: scaleX(0); }
         to { transform: scaleX(1); }
