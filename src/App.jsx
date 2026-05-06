@@ -595,6 +595,7 @@ function App() {
     const monthCount = Math.max(months.size, 1)
 
     return {
+      totals,
       totalRows: rows.length,
       totalAmount: Object.values(totals).reduce((sum, value) => sum + value, 0),
       months: monthCount,
@@ -714,12 +715,12 @@ function App() {
   
       setStatementRows(rows)
       setAnalysisSource('statement')
-      setFood(formatNumber(String(summary.monthlyAverage.food)))
-      setTransport(formatNumber(String(summary.monthlyAverage.transport)))
-      setCafe(formatNumber(String(summary.monthlyAverage.cafe)))
-      setShopping(formatNumber(String(summary.monthlyAverage.shopping)))
-      setFuel(formatNumber(String(summary.monthlyAverage.fuel)))
-      setEtc(formatNumber(String(summary.monthlyAverage.etc)))
+      setFood(formatNumber(String(summary.totals.food)))
+      setTransport(formatNumber(String(summary.totals.transport)))
+      setCafe(formatNumber(String(summary.totals.cafe)))
+      setShopping(formatNumber(String(summary.totals.shopping)))
+      setFuel(formatNumber(String(summary.totals.fuel)))
+      setEtc(formatNumber(String(summary.totals.etc)))
   
       setUploadMessage(`${rows.length}건의 소비내역 분석이 완료되었습니다.`)
     } catch (error) {
@@ -773,12 +774,12 @@ function App() {
         const summary = calculateStatementSummary(rows)
         setStatementRows(rows)
         setAnalysisSource('statement')
-        setFood(formatNumber(String(summary.monthlyAverage.food)))
-        setTransport(formatNumber(String(summary.monthlyAverage.transport)))
-        setCafe(formatNumber(String(summary.monthlyAverage.cafe)))
-        setShopping(formatNumber(String(summary.monthlyAverage.shopping)))
-        setFuel(formatNumber(String(summary.monthlyAverage.fuel)))
-        setEtc(formatNumber(String(summary.monthlyAverage.etc)))
+        setFood(formatNumber(String(summary.totals.food)))
+        setTransport(formatNumber(String(summary.totals.transport)))
+        setCafe(formatNumber(String(summary.totals.cafe)))
+        setShopping(formatNumber(String(summary.totals.shopping)))
+        setFuel(formatNumber(String(summary.totals.fuel)))
+        setEtc(formatNumber(String(summary.totals.etc)))
         setUploadMessage(`${rows.length}건의 소비내역 분석이 완료되었습니다.`)
       } catch (error) {
         console.error(error)
@@ -915,7 +916,7 @@ function App() {
     const items = Object.entries(spending).map(([key, value]) => ({ label: categoryLabels[key], value }))
     const top = [...items].sort((a, b) => b.value - a.value)[0]
     if (!top || top.value === 0) return '입력한 소비 패턴을 바탕으로 카드를 추천했습니다.'
-    const sourceText = analysisSource === 'statement' ? '최근 3개월 명세서 기반 월평균 소비에서' : '직접 입력한 소비금액에서'
+    const sourceText = analysisSource === 'statement' ? '업로드한 명세서 기준 소비에서' : '직접 입력한 소비금액에서'
     return `${sourceText} ${top.label} 비중이 높은 것으로 분석되어 추천 결과를 정리했습니다.`
   }
 
@@ -923,7 +924,7 @@ function App() {
     const entries = Object.entries(spending).filter(([, value]) => value > 0).sort((a, b) => b[1] - a[1])
     const tags = entries.slice(0, 2).map(([key]) => `${categoryLabels[key]} 중심`)
     tags.push(cardType === '신용카드' ? '신용카드 선호' : '체크카드 선호')
-    if (analysisSource === 'statement') tags.push('3개월 명세서 분석')
+    if (analysisSource === 'statement') tags.push('명세서 기반 분석')
     return tags
   }
 
@@ -1071,7 +1072,6 @@ function App() {
       @media (max-width: 1180px) {
         .result-summary-grid { grid-template-columns: 1fr !important; }
         .spend-result-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
-        .recommend-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
       }
       @media (max-width: 760px) {
         html, body, #root { overflow-x: hidden !important; }
@@ -1183,6 +1183,228 @@ function App() {
           border-radius: 18px !important;
         }
       }
+
+      @media (max-width: 1100px) {
+        html, body, #root { width: 100% !important; overflow-x: hidden !important; }
+        body * { max-width: 100% !important; box-sizing: border-box !important; }
+
+        .hero-grid {
+          grid-template-columns: 1fr !important;
+          min-height: auto !important;
+          padding: 34px 28px !important;
+          gap: 26px !important;
+        }
+        .hero-grid h1 {
+          font-size: 48px !important;
+          line-height: 1.05 !important;
+          word-break: keep-all !important;
+          white-space: normal !important;
+        }
+        .hero-grid p {
+          font-size: 16px !important;
+          line-height: 1.6 !important;
+          word-break: keep-all !important;
+          white-space: normal !important;
+        }
+        .hero-grid > div:last-child {
+          display: none !important;
+        }
+
+        .mobile-main-panel {
+          padding: 24px 18px !important;
+          border-radius: 30px !important;
+        }
+        .upload-card {
+          padding: 24px 20px !important;
+          border-radius: 28px !important;
+          margin-bottom: 26px !important;
+        }
+        .upload-card h2 {
+          font-size: 24px !important;
+          line-height: 1.25 !important;
+          word-break: keep-all !important;
+          white-space: normal !important;
+        }
+        .upload-card p {
+          font-size: 14px !important;
+          line-height: 1.6 !important;
+          word-break: keep-all !important;
+        }
+        .upload-card label {
+          flex-direction: column !important;
+          align-items: flex-start !important;
+          gap: 8px !important;
+          padding: 18px !important;
+        }
+        .upload-card label span {
+          width: 100% !important;
+          display: block !important;
+          white-space: normal !important;
+          overflow: visible !important;
+          text-overflow: clip !important;
+          word-break: keep-all !important;
+          line-height: 1.35 !important;
+        }
+
+        .form-grid-2,
+        .spend-form-grid,
+        .result-summary-grid,
+        .result-analysis-top,
+        .recommend-grid {
+          grid-template-columns: 1fr !important;
+        }
+
+        .spend-form-grid {
+          gap: 12px !important;
+        }
+        .spend-input-card {
+          padding: 18px !important;
+          border-radius: 24px !important;
+        }
+        .spend-input-card > div:first-child {
+          margin-bottom: 12px !important;
+          font-size: 18px !important;
+          line-height: 1.25 !important;
+          word-break: keep-all !important;
+        }
+        .amount-pill {
+          width: 100% !important;
+          min-width: 0 !important;
+        }
+        .amount-pill input {
+          width: 100% !important;
+          min-width: 0 !important;
+          padding: 15px 52px 15px 16px !important;
+          font-size: 16px !important;
+          line-height: 1.2 !important;
+          text-align: right !important;
+          letter-spacing: -0.03em !important;
+        }
+        .amount-pill span {
+          right: 17px !important;
+          font-size: 13px !important;
+        }
+
+        .result-analysis-top {
+          gap: 16px !important;
+          align-items: stretch !important;
+          margin-bottom: 20px !important;
+        }
+        .result-analysis-top h2 {
+          font-size: 28px !important;
+          line-height: 1.15 !important;
+          word-break: keep-all !important;
+          white-space: normal !important;
+          text-align: left !important;
+        }
+        .result-analysis-top p {
+          font-size: 14px !important;
+          line-height: 1.55 !important;
+          word-break: keep-all !important;
+        }
+        .result-analysis-top > div:last-child {
+          width: 100% !important;
+          padding: 18px 20px !important;
+          text-align: left !important;
+        }
+
+        .spend-result-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          gap: 12px !important;
+        }
+        .result-spend-card {
+          padding: 14px !important;
+          border-radius: 22px !important;
+          min-height: 132px !important;
+        }
+        .result-spend-card > div:first-child {
+          width: 64px !important;
+          height: 64px !important;
+          right: -26px !important;
+          top: -26px !important;
+        }
+        .result-spend-card > div:nth-child(2) {
+          display: flex !important;
+          align-items: center !important;
+          gap: 8px !important;
+          margin-bottom: 12px !important;
+        }
+        .result-spend-card > div:nth-child(2) > div:first-child {
+          min-width: 0 !important;
+          flex: 1 1 auto !important;
+          gap: 7px !important;
+        }
+        .result-spend-card > div:nth-child(2) > div:first-child > div:first-child {
+          width: 34px !important;
+          height: 34px !important;
+          border-radius: 12px !important;
+          font-size: 17px !important;
+        }
+        .result-spend-card > div:nth-child(2) > div:first-child > div:last-child {
+          font-size: 15px !important;
+          line-height: 1.1 !important;
+          white-space: nowrap !important;
+          word-break: keep-all !important;
+        }
+        .result-spend-card > div:nth-child(2) > div:last-child {
+          font-size: 15px !important;
+          flex: 0 0 auto !important;
+        }
+        .result-spend-card > div:nth-child(3) {
+          font-size: 17px !important;
+          line-height: 1.15 !important;
+          letter-spacing: -0.04em !important;
+          word-break: keep-all !important;
+          white-space: normal !important;
+        }
+        .result-spend-card > div:nth-child(4) {
+          margin-top: 12px !important;
+          height: 6px !important;
+        }
+
+        .recommend-grid {
+          gap: 16px !important;
+          margin-bottom: 26px !important;
+        }
+        .recommend-card {
+          width: 100% !important;
+          padding: 22px 18px !important;
+          border-radius: 26px !important;
+          min-height: auto !important;
+          text-align: left !important;
+        }
+        .recommend-card > div:first-child {
+          width: 110px !important;
+          height: 110px !important;
+          right: -38px !important;
+          top: -38px !important;
+        }
+        .recommend-card h2 {
+          font-size: 22px !important;
+          line-height: 1.22 !important;
+          letter-spacing: -0.05em !important;
+          word-break: keep-all !important;
+          white-space: normal !important;
+          text-align: left !important;
+        }
+        .recommend-card p {
+          text-align: left !important;
+        }
+        .card-visual-wrap {
+          display: none !important;
+        }
+        .recommend-card button {
+          min-height: 48px !important;
+          border-radius: 16px !important;
+          font-size: 14px !important;
+        }
+        .recommend-card [aria-label="찜하기"] {
+          width: 42px !important;
+          height: 42px !important;
+          border-radius: 14px !important;
+        }
+      }
+
       @keyframes growBar {
         from { transform: scaleX(0); }
         to { transform: scaleX(1); }
@@ -1210,7 +1432,7 @@ function App() {
 
 
         <div style={containerStyle}>
-          <div style={{ ...panelStyle, minHeight: '76vh', padding: '54px', display: 'grid', gridTemplateColumns: 'minmax(0, 1.1fr) minmax(300px, 0.9fr)', gap: '42px', alignItems: 'center' }}>
+          <div className="hero-grid" style={{ ...panelStyle, minHeight: '76vh', padding: '54px', display: 'grid', gridTemplateColumns: 'minmax(0, 1.1fr) minmax(300px, 0.9fr)', gap: '42px', alignItems: 'center' }}>
             <div>
               <div style={{ ...tagStyle, display: 'inline-flex', marginBottom: '22px' }}>CARD FIT RECOMMENDER</div>
               <h1 style={{ fontSize: '72px', lineHeight: 1.02, margin: '0 0 20px', letterSpacing: '-0.09em', color: '#111827', fontWeight: 950 }}>카드핏</h1>
@@ -1240,17 +1462,17 @@ function App() {
           <div style={{ textAlign: 'center', marginBottom: '34px' }}>
             <div style={{ ...tagStyle, display: 'inline-flex', marginBottom: '14px' }}>STEP 01</div>
             <h1 style={{ fontSize: '46px', margin: '0 0 12px', letterSpacing: '-0.06em', color: '#111827' }}>소비 정보 입력</h1>
-            <p style={{ color: '#344054', fontSize: '18px', margin: 0, fontWeight: 600 }}>엑셀, CSV, 이미지 명세서를 업로드하거나 직접 월평균 소비금액을 입력하세요.</p>
+            <p style={{ color: '#344054', fontSize: '18px', margin: 0, fontWeight: 600 }}>엑셀, CSV, 이미지 명세서를 업로드하거나 직접 소비금액을 입력하세요.</p>
           </div>
 
-          <div style={{ ...panelStyle, maxWidth: '900px', margin: '0 auto', padding: '34px' }}>
+          <div className="mobile-main-panel" style={{ ...panelStyle, maxWidth: '900px', margin: '0 auto', padding: '34px' }}>
             <div className="upload-card" style={{ padding: '30px', borderRadius: '30px', background: 'linear-gradient(135deg, #111827 0%, #1d4ed8 58%, #7c3aed 100%)', border: '1px solid rgba(255,255,255,0.34)', marginBottom: '24px', color: '#ffffff', boxShadow: '0 24px 56px rgba(37,99,235,0.26)', position: 'relative', overflow: 'hidden' }}>
               <div style={{ position: 'absolute', right: '-70px', top: '-90px', width: '220px', height: '220px', borderRadius: '50%', background: 'rgba(255,255,255,0.12)' }} />
               <div style={{ position: 'relative' }}>
                 <div style={{ display: 'inline-flex', padding: '8px 12px', borderRadius: '999px', background: 'rgba(255,255,255,0.16)', fontSize: '13px', fontWeight: 900, marginBottom: '14px' }}>명세서 자동 분석</div>
                 <h2 style={{ ...sectionTitleStyle, fontSize: '28px', color: '#ffffff', textAlign: 'center' }}>최근 소비내역 업로드</h2>
                 <p style={{ color: 'rgba(255,255,255,0.82)', lineHeight: 1.6, fontWeight: 700, textAlign: 'center', margin: '10px 0 24px' }}>
-                  파일 한 번으로 소비패턴을 분석하고 월평균 금액을 자동 입력합니다.
+                  파일 한 번으로 소비패턴을 분석하고 명세서 기준 금액을 자동 입력합니다.
                 </p>
 
                 <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '14px', padding: '18px 20px', borderRadius: '22px', background: 'rgba(255,255,255,0.96)', color: '#111827', cursor: ocrLoading ? 'not-allowed' : 'pointer', boxShadow: '0 18px 38px rgba(15,23,42,0.18)', border: '1px solid rgba(255,255,255,0.65)' }}>
@@ -1280,7 +1502,7 @@ function App() {
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
+            <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
               <select value={age} onChange={(e) => setAge(e.target.value)} style={inputStyle}>
                 <option value="">연령대 선택</option><option value="10">10대</option><option value="20">20대</option><option value="30">30대</option><option value="40">40대</option><option value="50">50대 이상</option>
               </select>
