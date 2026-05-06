@@ -168,6 +168,39 @@ function App() {
     )
   }
 
+  const findAmountColumnIndex = (headers) => {
+    const negativeKeywords = ['누적', '잔액', '한도', '포인트', '적립', '할인', '면제', '수수료', '총할부', '할부잔액', '청구예정', '입금', '결제후']
+    const positiveGroups = [
+      ['이용금액', '사용금액', '승인금액', '매출금액'],
+      ['결제금액', '청구금액'],
+      ['결제원금', '원금'],
+      ['금액', 'amount'],
+    ]
+
+    let bestIndex = -1
+    let bestScore = -999
+
+    headers.forEach((header, index) => {
+      let score = -999
+      positiveGroups.forEach((group, groupIndex) => {
+        if (group.some((candidate) => header.includes(normalizeHeader(candidate)))) {
+          score = Math.max(score, 100 - groupIndex * 20)
+        }
+      })
+
+      if (score === -999) return
+      if (negativeKeywords.some((keyword) => header.includes(normalizeHeader(keyword)))) score -= 80
+      if (header === '금액' || header === 'amount') score -= 10
+
+      if (score > bestScore) {
+        bestScore = score
+        bestIndex = index
+      }
+    })
+
+    return bestScore > 0 ? bestIndex : -1
+  }
+
   const dateColumnCandidates = [
     '이용일', '이용일자', '거래일', '거래일자', '승인일', '승인일자', '매출일', '결제일', '사용일', '일자', '날짜', 'date'
   ]
@@ -445,7 +478,7 @@ function App() {
       const headers = row.map((cell) => normalizeHeader(cell))
       const dateIndex = findColumnIndex(headers, dateColumnCandidates)
       const merchantIndex = findColumnIndex(headers, merchantColumnCandidates)
-      const amountIndex = findColumnIndex(headers, amountColumnCandidates)
+      const amountIndex = findAmountColumnIndex(headers)
       let score = 0
       if (dateIndex >= 0) score += 1
       if (merchantIndex >= 0) score += 2
@@ -470,7 +503,7 @@ function App() {
     const headers = rawHeaders.map((header) => normalizeHeader(header))
     const dateIndex = findColumnIndex(headers, dateColumnCandidates)
     const merchantIndex = findColumnIndex(headers, merchantColumnCandidates)
-    const amountIndex = findColumnIndex(headers, amountColumnCandidates)
+    const amountIndex = findAmountColumnIndex(headers)
 
     console.log(`${sheetName || '명세서'} 컬럼명:`, rawHeaders)
     console.log(`${sheetName || '명세서'} 자동 탐색 결과:`, {
@@ -595,17 +628,16 @@ function App() {
     const monthCount = Math.max(months.size, 1)
 
     return {
-      totals,
       totalRows: rows.length,
       totalAmount: Object.values(totals).reduce((sum, value) => sum + value, 0),
       months: monthCount,
       monthlyAverage: {
-        food: Math.round(totals.food / monthCount),
-        transport: Math.round(totals.transport / monthCount),
-        cafe: Math.round(totals.cafe / monthCount),
-        shopping: Math.round(totals.shopping / monthCount),
-        fuel: Math.round(totals.fuel / monthCount),
-        etc: Math.round(totals.etc / monthCount),
+        food: Math.round(totals.food),
+        transport: Math.round(totals.transport),
+        cafe: Math.round(totals.cafe),
+        shopping: Math.round(totals.shopping),
+        fuel: Math.round(totals.fuel),
+        etc: Math.round(totals.etc),
       },
     }
   }
@@ -715,12 +747,12 @@ function App() {
   
       setStatementRows(rows)
       setAnalysisSource('statement')
-      setFood(formatNumber(String(summary.totals.food)))
-      setTransport(formatNumber(String(summary.totals.transport)))
-      setCafe(formatNumber(String(summary.totals.cafe)))
-      setShopping(formatNumber(String(summary.totals.shopping)))
-      setFuel(formatNumber(String(summary.totals.fuel)))
-      setEtc(formatNumber(String(summary.totals.etc)))
+      setFood(formatNumber(String(summary.monthlyAverage.food)))
+      setTransport(formatNumber(String(summary.monthlyAverage.transport)))
+      setCafe(formatNumber(String(summary.monthlyAverage.cafe)))
+      setShopping(formatNumber(String(summary.monthlyAverage.shopping)))
+      setFuel(formatNumber(String(summary.monthlyAverage.fuel)))
+      setEtc(formatNumber(String(summary.monthlyAverage.etc)))
   
       setUploadMessage(`${rows.length}건의 소비내역 분석이 완료되었습니다.`)
     } catch (error) {
@@ -774,12 +806,12 @@ function App() {
         const summary = calculateStatementSummary(rows)
         setStatementRows(rows)
         setAnalysisSource('statement')
-        setFood(formatNumber(String(summary.totals.food)))
-        setTransport(formatNumber(String(summary.totals.transport)))
-        setCafe(formatNumber(String(summary.totals.cafe)))
-        setShopping(formatNumber(String(summary.totals.shopping)))
-        setFuel(formatNumber(String(summary.totals.fuel)))
-        setEtc(formatNumber(String(summary.totals.etc)))
+        setFood(formatNumber(String(summary.monthlyAverage.food)))
+        setTransport(formatNumber(String(summary.monthlyAverage.transport)))
+        setCafe(formatNumber(String(summary.monthlyAverage.cafe)))
+        setShopping(formatNumber(String(summary.monthlyAverage.shopping)))
+        setFuel(formatNumber(String(summary.monthlyAverage.fuel)))
+        setEtc(formatNumber(String(summary.monthlyAverage.etc)))
         setUploadMessage(`${rows.length}건의 소비내역 분석이 완료되었습니다.`)
       } catch (error) {
         console.error(error)
@@ -849,7 +881,7 @@ function App() {
     // 전월실적 미달이어도 예상 혜택은 계산하고, 최종점수에서만 감점합니다.
     // 이렇게 해야 CSV 샘플 금액이 작아도 결과가 전부 0점으로 보이지 않습니다.
     const eligibilityNotice = !isEligible && requiredPreviousMonth > 0
-      ? ` 단, 월평균 소비금액이 전월실적 조건 ${requiredPreviousMonth.toLocaleString()}원보다 낮아 실제 혜택 적용에는 제한이 있을 수 있습니다.`
+      ? ` 단, 소비금액이 전월실적 조건 ${requiredPreviousMonth.toLocaleString()}원보다 낮아 실제 혜택 적용에는 제한이 있을 수 있습니다.`
       : ''
 
     const categoryBenefits = keys.reduce((acc, key) => {
@@ -916,7 +948,7 @@ function App() {
     const items = Object.entries(spending).map(([key, value]) => ({ label: categoryLabels[key], value }))
     const top = [...items].sort((a, b) => b.value - a.value)[0]
     if (!top || top.value === 0) return '입력한 소비 패턴을 바탕으로 카드를 추천했습니다.'
-    const sourceText = analysisSource === 'statement' ? '업로드한 명세서 기준 소비에서' : '직접 입력한 소비금액에서'
+    const sourceText = analysisSource === 'statement' ? '업로드한 명세서 기반 소비에서' : '직접 입력한 소비금액에서'
     return `${sourceText} ${top.label} 비중이 높은 것으로 분석되어 추천 결과를 정리했습니다.`
   }
 
@@ -924,7 +956,7 @@ function App() {
     const entries = Object.entries(spending).filter(([, value]) => value > 0).sort((a, b) => b[1] - a[1])
     const tags = entries.slice(0, 2).map(([key]) => `${categoryLabels[key]} 중심`)
     tags.push(cardType === '신용카드' ? '신용카드 선호' : '체크카드 선호')
-    if (analysisSource === 'statement') tags.push('명세서 기반 분석')
+    if (analysisSource === 'statement') tags.push('명세서 분석')
     return tags
   }
 
@@ -1072,11 +1104,10 @@ function App() {
       @media (max-width: 1180px) {
         .result-summary-grid { grid-template-columns: 1fr !important; }
         .spend-result-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+        .recommend-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
       }
-      @media (max-width: 760px) {
-        html, body, #root { overflow-x: hidden !important; }
-        body * { max-width: 100%; }
 
+      @media (max-width: 760px) {
         .hero-grid,
         .result-summary-grid,
         .result-analysis-top,
@@ -1084,327 +1115,165 @@ function App() {
           grid-template-columns: 1fr !important;
         }
 
-        .result-header-panel {
-          padding: 28px 22px !important;
+        .step-header {
           margin-bottom: 28px !important;
-        }
-        .result-header-title {
-          font-size: 36px !important;
-          line-height: 1.12 !important;
+          padding: 0 10px !important;
         }
 
-        .spend-form-grid {
-          grid-template-columns: 1fr !important;
-          gap: 12px !important;
-        }
-        .spend-input-card {
-          padding: 18px !important;
-          border-radius: 24px !important;
-        }
-        .spend-input-card > div:first-child {
-          margin-bottom: 10px !important;
-          font-size: 18px !important;
-        }
-        .amount-pill input {
-          width: 100% !important;
-          padding: 15px 46px 15px 16px !important;
-          font-size: 17px !important;
-          text-align: right !important;
-          letter-spacing: -0.04em !important;
-        }
-        .amount-pill span {
-          right: 16px !important;
-          font-size: 14px !important;
+        .step-header h1 {
+          font-size: 38px !important;
+          line-height: 1.08 !important;
+          margin-bottom: 16px !important;
         }
 
-        .spend-result-grid {
-          grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-          gap: 14px !important;
-        }
-        .result-spend-card {
-          padding: 16px !important;
-          border-radius: 22px !important;
-          min-height: 150px !important;
-        }
-        .result-spend-card > div:nth-child(2) {
-          align-items: flex-start !important;
-          gap: 8px !important;
-          margin-bottom: 12px !important;
-        }
-        .result-spend-card > div:nth-child(2) > div:first-child {
-          gap: 7px !important;
-          min-width: 0 !important;
-        }
-        .result-spend-card > div:nth-child(2) > div:first-child > div:first-child {
-          width: 34px !important;
-          height: 34px !important;
-          border-radius: 12px !important;
-          font-size: 18px !important;
-        }
-        .result-spend-card > div:nth-child(2) > div:first-child > div:last-child {
-          font-size: 15px !important;
-          line-height: 1.15 !important;
-          word-break: keep-all !important;
-        }
-        .result-spend-card > div:nth-child(2) > div:last-child {
+        .step-header p {
           font-size: 16px !important;
-          flex: 0 0 auto !important;
-        }
-        .result-spend-card > div:nth-child(3) {
-          font-size: 18px !important;
-          line-height: 1.1 !important;
-          word-break: keep-all !important;
+          line-height: 1.55 !important;
         }
 
-        .recommend-grid {
-          grid-template-columns: 1fr !important;
-          gap: 18px !important;
-        }
-        .recommend-card {
-          width: 100% !important;
-          padding: 22px 18px !important;
-          border-radius: 26px !important;
-        }
-        .recommend-card h2 {
-          font-size: 22px !important;
-          line-height: 1.22 !important;
-          word-break: keep-all !important;
-          text-align: left !important;
-        }
-        .card-visual-wrap {
-          display: none !important;
-        }
-        .recommend-card button {
-          min-height: 48px !important;
-          border-radius: 16px !important;
-        }
-        .recommend-card > div:nth-of-type(3) {
-          padding: 15px !important;
-          border-radius: 18px !important;
-        }
-      }
-
-      @media (max-width: 1100px) {
-        html, body, #root { width: 100% !important; overflow-x: hidden !important; }
-        body * { max-width: 100% !important; box-sizing: border-box !important; }
-
-        .hero-grid {
-          grid-template-columns: 1fr !important;
-          min-height: auto !important;
-          padding: 34px 28px !important;
-          gap: 26px !important;
-        }
-        .hero-grid h1 {
-          font-size: 48px !important;
-          line-height: 1.05 !important;
-          word-break: keep-all !important;
-          white-space: normal !important;
-        }
-        .hero-grid p {
-          font-size: 16px !important;
-          line-height: 1.6 !important;
-          word-break: keep-all !important;
-          white-space: normal !important;
-        }
-        .hero-grid > div:last-child {
-          display: none !important;
-        }
-
-        .mobile-main-panel {
-          padding: 24px 18px !important;
+        .input-panel {
+          padding: 28px 18px !important;
           border-radius: 30px !important;
         }
+
         .upload-card {
-          padding: 24px 20px !important;
+          padding: 26px 18px !important;
           border-radius: 28px !important;
           margin-bottom: 26px !important;
         }
+
         .upload-card h2 {
           font-size: 24px !important;
           line-height: 1.25 !important;
-          word-break: keep-all !important;
-          white-space: normal !important;
         }
+
         .upload-card p {
-          font-size: 14px !important;
-          line-height: 1.6 !important;
-          word-break: keep-all !important;
+          font-size: 15px !important;
+          line-height: 1.65 !important;
+          margin-bottom: 22px !important;
         }
+
         .upload-card label {
           flex-direction: column !important;
           align-items: flex-start !important;
           gap: 8px !important;
           padding: 18px !important;
         }
-        .upload-card label span {
-          width: 100% !important;
-          display: block !important;
-          white-space: normal !important;
-          overflow: visible !important;
-          text-overflow: clip !important;
-          word-break: keep-all !important;
-          line-height: 1.35 !important;
-        }
 
         .form-grid-2,
-        .spend-form-grid,
-        .result-summary-grid,
-        .result-analysis-top,
-        .recommend-grid {
+        .spend-form-grid {
           grid-template-columns: 1fr !important;
         }
 
-        .spend-form-grid {
-          gap: 12px !important;
-        }
         .spend-input-card {
           padding: 18px !important;
           border-radius: 24px !important;
         }
-        .spend-input-card > div:first-child {
-          margin-bottom: 12px !important;
-          font-size: 18px !important;
-          line-height: 1.25 !important;
-          word-break: keep-all !important;
-        }
-        .amount-pill {
-          width: 100% !important;
-          min-width: 0 !important;
-        }
+
         .amount-pill input {
-          width: 100% !important;
-          min-width: 0 !important;
-          padding: 15px 52px 15px 16px !important;
+          padding-right: 56px !important;
           font-size: 16px !important;
-          line-height: 1.2 !important;
-          text-align: right !important;
-          letter-spacing: -0.03em !important;
-        }
-        .amount-pill span {
-          right: 17px !important;
-          font-size: 13px !important;
         }
 
-        .result-analysis-top {
-          gap: 16px !important;
-          align-items: stretch !important;
-          margin-bottom: 20px !important;
+        .amount-pill span {
+          right: 18px !important;
+          font-size: 15px !important;
         }
-        .result-analysis-top h2 {
-          font-size: 28px !important;
-          line-height: 1.15 !important;
-          word-break: keep-all !important;
-          white-space: normal !important;
-          text-align: left !important;
+
+        .result-header-panel {
+          padding: 26px 20px !important;
+          margin-bottom: 24px !important;
+          border-radius: 28px !important;
         }
-        .result-analysis-top p {
-          font-size: 14px !important;
+
+        .result-header-title {
+          font-size: 34px !important;
+          line-height: 1.12 !important;
+          margin-bottom: 14px !important;
+        }
+
+        .result-header-panel p {
+          font-size: 15px !important;
           line-height: 1.55 !important;
+        }
+
+        .result-summary-grid {
+          margin-bottom: 16px !important;
+          gap: 12px !important;
+        }
+
+        .result-summary-grid > div:first-child {
+          padding: 22px !important;
+          border-radius: 26px !important;
+        }
+
+        .result-summary-grid h2 {
+          font-size: 24px !important;
+          line-height: 1.18 !important;
+        }
+
+        .result-summary-grid > div:last-child {
+          padding: 14px !important;
+        }
+
+        .recommend-grid {
+          gap: 14px !important;
+          margin-bottom: 24px !important;
+        }
+
+        .recommend-card {
+          padding: 18px !important;
+          border-radius: 24px !important;
+        }
+
+        .recommend-card h2 {
+          font-size: 20px !important;
+          line-height: 1.22 !important;
           word-break: keep-all !important;
         }
-        .result-analysis-top > div:last-child {
-          width: 100% !important;
-          padding: 18px 20px !important;
-          text-align: left !important;
+
+        .card-visual-wrap {
+          display: none !important;
+        }
+
+        .recommend-card button[aria-label="찜하기"] {
+          width: 40px !important;
+          height: 40px !important;
         }
 
         .spend-result-grid {
           grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
           gap: 12px !important;
         }
+
+        .result-analysis-top {
+          gap: 16px !important;
+          margin-bottom: 18px !important;
+        }
+
+        .result-analysis-top h2 {
+          font-size: 26px !important;
+          line-height: 1.15 !important;
+        }
+
+        .result-analysis-top > div:last-child {
+          width: 100% !important;
+          text-align: left !important;
+          padding: 16px 18px !important;
+        }
+
         .result-spend-card {
           padding: 14px !important;
-          border-radius: 22px !important;
-          min-height: 132px !important;
-        }
-        .result-spend-card > div:first-child {
-          width: 64px !important;
-          height: 64px !important;
-          right: -26px !important;
-          top: -26px !important;
-        }
-        .result-spend-card > div:nth-child(2) {
-          display: flex !important;
-          align-items: center !important;
-          gap: 8px !important;
-          margin-bottom: 12px !important;
-        }
-        .result-spend-card > div:nth-child(2) > div:first-child {
-          min-width: 0 !important;
-          flex: 1 1 auto !important;
-          gap: 7px !important;
-        }
-        .result-spend-card > div:nth-child(2) > div:first-child > div:first-child {
-          width: 34px !important;
-          height: 34px !important;
-          border-radius: 12px !important;
-          font-size: 17px !important;
-        }
-        .result-spend-card > div:nth-child(2) > div:first-child > div:last-child {
-          font-size: 15px !important;
-          line-height: 1.1 !important;
-          white-space: nowrap !important;
-          word-break: keep-all !important;
-        }
-        .result-spend-card > div:nth-child(2) > div:last-child {
-          font-size: 15px !important;
-          flex: 0 0 auto !important;
-        }
-        .result-spend-card > div:nth-child(3) {
-          font-size: 17px !important;
-          line-height: 1.15 !important;
-          letter-spacing: -0.04em !important;
-          word-break: keep-all !important;
-          white-space: normal !important;
-        }
-        .result-spend-card > div:nth-child(4) {
-          margin-top: 12px !important;
-          height: 6px !important;
+          border-radius: 20px !important;
         }
 
-        .recommend-grid {
-          gap: 16px !important;
-          margin-bottom: 26px !important;
-        }
-        .recommend-card {
-          width: 100% !important;
-          padding: 22px 18px !important;
-          border-radius: 26px !important;
-          min-height: auto !important;
-          text-align: left !important;
-        }
-        .recommend-card > div:first-child {
-          width: 110px !important;
-          height: 110px !important;
-          right: -38px !important;
-          top: -38px !important;
-        }
-        .recommend-card h2 {
-          font-size: 22px !important;
-          line-height: 1.22 !important;
-          letter-spacing: -0.05em !important;
-          word-break: keep-all !important;
-          white-space: normal !important;
-          text-align: left !important;
-        }
-        .recommend-card p {
-          text-align: left !important;
-        }
-        .card-visual-wrap {
-          display: none !important;
-        }
-        .recommend-card button {
-          min-height: 48px !important;
-          border-radius: 16px !important;
-          font-size: 14px !important;
-        }
-        .recommend-card [aria-label="찜하기"] {
-          width: 42px !important;
-          height: 42px !important;
-          border-radius: 14px !important;
+        .result-spend-card > div:first-child {
+          width: 62px !important;
+          height: 62px !important;
+          right: -22px !important;
+          top: -22px !important;
         }
       }
-
       @keyframes growBar {
         from { transform: scaleX(0); }
         to { transform: scaleX(1); }
@@ -1432,7 +1301,18 @@ function App() {
 
 
         <div style={containerStyle}>
-          <div className="hero-grid" style={{ ...panelStyle, minHeight: '76vh', padding: '54px', display: 'grid', gridTemplateColumns: 'minmax(0, 1.1fr) minmax(300px, 0.9fr)', gap: '42px', alignItems: 'center' }}>
+        <div
+          className="hero-grid"
+          style={{
+            ...panelStyle,
+            minHeight: '76vh',
+            padding: '54px',
+            display: 'grid',
+            gridTemplateColumns: 'minmax(0, 1.1fr) minmax(300px, 0.9fr)',
+            gap: '42px',
+            alignItems: 'center',
+          }}
+        >
             <div>
               <div style={{ ...tagStyle, display: 'inline-flex', marginBottom: '22px' }}>CARD FIT RECOMMENDER</div>
               <h1 style={{ fontSize: '72px', lineHeight: 1.02, margin: '0 0 20px', letterSpacing: '-0.09em', color: '#111827', fontWeight: 950 }}>카드핏</h1>
@@ -1459,20 +1339,20 @@ function App() {
       <div style={pageStyle}>
         <MotionStyles />
         <div style={containerStyle}>
-          <div style={{ textAlign: 'center', marginBottom: '34px' }}>
+          <div className="step-header" style={{ textAlign: 'center', marginBottom: '34px' }}>
             <div style={{ ...tagStyle, display: 'inline-flex', marginBottom: '14px' }}>STEP 01</div>
             <h1 style={{ fontSize: '46px', margin: '0 0 12px', letterSpacing: '-0.06em', color: '#111827' }}>소비 정보 입력</h1>
             <p style={{ color: '#344054', fontSize: '18px', margin: 0, fontWeight: 600 }}>엑셀, CSV, 이미지 명세서를 업로드하거나 직접 소비금액을 입력하세요.</p>
           </div>
 
-          <div className="mobile-main-panel" style={{ ...panelStyle, maxWidth: '900px', margin: '0 auto', padding: '34px' }}>
+          <div className="input-panel" style={{ ...panelStyle, maxWidth: '900px', margin: '0 auto', padding: '34px' }}>
             <div className="upload-card" style={{ padding: '30px', borderRadius: '30px', background: 'linear-gradient(135deg, #111827 0%, #1d4ed8 58%, #7c3aed 100%)', border: '1px solid rgba(255,255,255,0.34)', marginBottom: '24px', color: '#ffffff', boxShadow: '0 24px 56px rgba(37,99,235,0.26)', position: 'relative', overflow: 'hidden' }}>
               <div style={{ position: 'absolute', right: '-70px', top: '-90px', width: '220px', height: '220px', borderRadius: '50%', background: 'rgba(255,255,255,0.12)' }} />
               <div style={{ position: 'relative' }}>
                 <div style={{ display: 'inline-flex', padding: '8px 12px', borderRadius: '999px', background: 'rgba(255,255,255,0.16)', fontSize: '13px', fontWeight: 900, marginBottom: '14px' }}>명세서 자동 분석</div>
                 <h2 style={{ ...sectionTitleStyle, fontSize: '28px', color: '#ffffff', textAlign: 'center' }}>최근 소비내역 업로드</h2>
                 <p style={{ color: 'rgba(255,255,255,0.82)', lineHeight: 1.6, fontWeight: 700, textAlign: 'center', margin: '10px 0 24px' }}>
-                  파일 한 번으로 소비패턴을 분석하고 명세서 기준 금액을 자동 입력합니다.
+                  파일 한 번으로 소비패턴을 분석하고 소비금액을 자동 입력합니다.
                 </p>
 
                 <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '14px', padding: '18px 20px', borderRadius: '22px', background: 'rgba(255,255,255,0.96)', color: '#111827', cursor: ocrLoading ? 'not-allowed' : 'pointer', boxShadow: '0 18px 38px rgba(15,23,42,0.18)', border: '1px solid rgba(255,255,255,0.65)' }}>
@@ -1524,7 +1404,7 @@ function App() {
               <p style={{ margin: '8px 0 0', color: '#667085', fontWeight: 700 }}>업로드 결과를 확인하거나 직접 수정할 수 있어요.</p>
             </div>
 
-            <div className="spend-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+            <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
               {[
                 { label: '식비', icon: '🍽️', value: food, setter: setFood, placeholder: '월 식비' },
                 { label: '교통', icon: '🚇', value: transport, setter: setTransport, placeholder: '월 교통비' },
@@ -1571,50 +1451,12 @@ function App() {
 
   return (
     <div style={pageStyle}>
+      <MotionStyles />
       <div style={containerStyle}>
         <div className="result-header-panel" style={{ ...panelStyle, padding: '46px 38px', textAlign: 'center', marginBottom: '48px', background: 'linear-gradient(135deg, rgba(239,246,255,0.96), rgba(245,243,255,0.96))' }}>
           <div style={{ ...tagStyle, display: 'inline-flex', marginBottom: '18px' }}>STEP 02</div>
           <h1 className="result-header-title" style={{ fontSize: '56px', margin: '0 0 18px', letterSpacing: '-0.07em', color: '#111827', fontWeight: 950 }}>추천 결과</h1>
           <p style={{ color: '#344054', fontSize: '19px', lineHeight: 1.65, margin: '0 auto', maxWidth: '760px', fontWeight: 800 }}>{getSummary()}</p>
-        </div>
-
-        <div style={{ ...panelStyle, padding: '38px', marginBottom: '40px' }}>
-          <div className="result-analysis-top" style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '28px', alignItems: 'center', marginBottom: '30px' }}>
-            <div>
-              <h2 style={{ ...sectionTitleStyle, fontSize: '34px', margin: 0, textAlign: 'left' }}>소비패턴 분석</h2>
-              <p style={{ color: '#667085', fontWeight: 800, margin: '12px 0 0', fontSize: '17px', lineHeight: 1.6 }}>
-                {analysisSource === 'statement'
-                  ? `명세서 ${statementSummary.totalRows}건을 기준으로 분석했습니다.`
-                  : '입력한 월평균 소비금액을 기준으로 분석했습니다.'}
-              </p>
-            </div>
-            <div style={{ minWidth: 0, padding: '20px 26px', borderRadius: '26px', background: 'linear-gradient(135deg, #111827 0%, #1d4ed8 100%)', color: '#ffffff', textAlign: 'right', boxShadow: '0 20px 44px rgba(29,78,216,0.22)' }}>
-              <div style={{ fontSize: '14px', fontWeight: 800, opacity: 0.75, marginBottom: '6px' }}>명세서 총 소비</div>
-              <div style={{ fontWeight: 950, fontSize: '28px', letterSpacing: '-0.05em' }}>{totalConsumption.toLocaleString()}원</div>
-            </div>
-          </div>
-
-          <div className="spend-result-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '18px', width: '100%' }}>
-            {spendingItems.map((item, index) => {
-              const percent = totalConsumption ? Math.round((item.value / totalConsumption) * 100) : 0
-              return (
-                <div key={item.key} className="result-spend-card" style={{ animationDelay: `${index * 80}ms`, background: 'linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)', borderRadius: '26px', padding: '24px', border: '1px solid rgba(148,163,184,0.18)', boxShadow: '0 16px 38px rgba(15, 23, 42, 0.07)', position: 'relative', overflow: 'hidden' }}>
-                  <div style={{ position: 'absolute', right: '-28px', top: '-28px', width: '90px', height: '90px', borderRadius: '50%', background: 'rgba(37,99,235,0.07)' }} />
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '18px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <div style={{ width: '42px', height: '42px', borderRadius: '15px', background: '#eef4ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px', flexShrink: 0 }}>{item.icon}</div>
-                      <div style={{ color: '#111827', fontWeight: 950, fontSize: '18px', letterSpacing: '-0.04em' }}>{item.label}</div>
-                    </div>
-                    <div style={{ fontSize: '20px', fontWeight: 950, letterSpacing: '-0.05em', color: '#2563eb' }}>{percent}%</div>
-                  </div>
-                  <div style={{ color: '#111827', fontSize: '23px', fontWeight: 950, letterSpacing: '-0.05em' }}>{item.value.toLocaleString()}원</div>
-                  <div style={{ marginTop: '16px', height: '8px', background: '#eef2f7', borderRadius: '999px', overflow: 'hidden' }}>
-                    <div className="spend-bar" style={{ width: `${percent}%`, height: '100%', background: 'linear-gradient(90deg, #2563eb, #7c3aed)', borderRadius: '999px' }} />
-                  </div>
-                </div>
-              )
-            })}
-          </div>
         </div>
 
         <div className="result-summary-grid" style={{ marginBottom: '22px', display: 'grid', gridTemplateColumns: '1.15fr 0.85fr', gap: '22px', alignItems: 'stretch' }}>
@@ -1697,6 +1539,45 @@ function App() {
               </div>
             )
           })}
+        </div>
+
+        <div style={{ ...panelStyle, padding: '38px', marginBottom: '40px' }}>
+          <div className="result-analysis-top" style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '28px', alignItems: 'center', marginBottom: '30px' }}>
+            <div>
+              <h2 style={{ ...sectionTitleStyle, fontSize: '34px', margin: 0, textAlign: 'left' }}>소비패턴 분석</h2>
+              <p style={{ color: '#667085', fontWeight: 800, margin: '12px 0 0', fontSize: '17px', lineHeight: 1.6 }}>
+                {analysisSource === 'statement'
+                  ? `명세서 ${statementSummary.totalRows}건을 기준으로 분석했습니다.`
+                  : '입력한 소비금액을 기준으로 분석했습니다.'}
+              </p>
+            </div>
+            <div style={{ minWidth: 0, padding: '20px 26px', borderRadius: '26px', background: 'linear-gradient(135deg, #111827 0%, #1d4ed8 100%)', color: '#ffffff', textAlign: 'right', boxShadow: '0 20px 44px rgba(29,78,216,0.22)' }}>
+              <div style={{ fontSize: '14px', fontWeight: 800, opacity: 0.75, marginBottom: '6px' }}>명세서 총 소비</div>
+              <div style={{ fontWeight: 950, fontSize: '28px', letterSpacing: '-0.05em' }}>{totalConsumption.toLocaleString()}원</div>
+            </div>
+          </div>
+
+          <div className="spend-result-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '18px', width: '100%' }}>
+            {spendingItems.map((item, index) => {
+              const percent = totalConsumption ? Math.round((item.value / totalConsumption) * 100) : 0
+              return (
+                <div key={item.key} className="result-spend-card" style={{ animationDelay: `${index * 80}ms`, background: 'linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)', borderRadius: '26px', padding: '24px', border: '1px solid rgba(148,163,184,0.18)', boxShadow: '0 16px 38px rgba(15, 23, 42, 0.07)', position: 'relative', overflow: 'hidden' }}>
+                  <div style={{ position: 'absolute', right: '-28px', top: '-28px', width: '90px', height: '90px', borderRadius: '50%', background: 'rgba(37,99,235,0.07)' }} />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '18px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <div style={{ width: '42px', height: '42px', borderRadius: '15px', background: '#eef4ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px', flexShrink: 0 }}>{item.icon}</div>
+                      <div style={{ color: '#111827', fontWeight: 950, fontSize: '18px', letterSpacing: '-0.04em' }}>{item.label}</div>
+                    </div>
+                    <div style={{ fontSize: '20px', fontWeight: 950, letterSpacing: '-0.05em', color: '#2563eb' }}>{percent}%</div>
+                  </div>
+                  <div style={{ color: '#111827', fontSize: '23px', fontWeight: 950, letterSpacing: '-0.05em' }}>{item.value.toLocaleString()}원</div>
+                  <div style={{ marginTop: '16px', height: '8px', background: '#eef2f7', borderRadius: '999px', overflow: 'hidden' }}>
+                    <div className="spend-bar" style={{ width: `${percent}%`, height: '100%', background: 'linear-gradient(90deg, #2563eb, #7c3aed)', borderRadius: '999px' }} />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
