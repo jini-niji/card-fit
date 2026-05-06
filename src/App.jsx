@@ -1074,7 +1074,6 @@ function App() {
         .recommend-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
       }
       @media (max-width: 760px) {
-
         .hero-grid {
           grid-template-columns: 1fr !important;
           padding: 28px 22px !important;
@@ -1082,16 +1081,64 @@ function App() {
           min-height: auto !important;
         }
 
-        .hero-grid h1 {
-          font-size: 48px !important;
-          line-height: 1.05 !important;
+        .spend-result-grid,
+        .recommend-grid,
+        .result-analysis-top {
+          grid-template-columns: 1fr !important;
+        }
+
+        .upload-card {
+          padding: 24px 18px !important;
+          border-radius: 28px !important;
+        }
+
+        .upload-card h2 {
+          font-size: 24px !important;
+          line-height: 1.25 !important;
+        }
+
+        .upload-card label {
+          flex-direction: column !important;
+          align-items: flex-start !important;
+          gap: 8px !important;
+          padding: 18px !important;
+        }
+
+        .upload-card label span {
+          width: 100% !important;
+          white-space: normal !important;
           word-break: keep-all !important;
         }
 
-        .hero-grid p {
-          font-size: 16px !important;
-          line-height: 1.6 !important;
-          word-break: keep-all !important;
+        select {
+          font-size: 14px !important;
+          padding: 15px 14px !important;
+        }
+
+        input {
+          font-size: 14px !important;
+          padding: 15px 14px !important;
+        }
+
+        .spend-input-card {
+          padding: 18px !important;
+          border-radius: 24px !important;
+        }
+
+        .spend-input-card div {
+          font-size: 17px !important;
+        }
+
+        .result-header-panel {
+          padding: 34px 22px !important;
+        }
+
+        .result-header-title {
+          font-size: 42px !important;
+        }
+        .form-grid-2,
+        .spend-form-grid {
+          grid-template-columns: 1fr !important;
         }
       }
 
@@ -1241,7 +1288,7 @@ function App() {
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
+            <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
               <select value={age} onChange={(e) => setAge(e.target.value)} style={inputStyle}>
                 <option value="">연령대 선택</option><option value="10">10대</option><option value="20">20대</option><option value="30">30대</option><option value="40">40대</option><option value="50">50대 이상</option>
               </select>
@@ -1263,7 +1310,7 @@ function App() {
               <p style={{ margin: '8px 0 0', color: '#667085', fontWeight: 700 }}>업로드 결과를 확인하거나 직접 수정할 수 있어요.</p>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+            <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
               {[
                 { label: '식비', icon: '🍽️', value: food, setter: setFood, placeholder: '월 식비' },
                 { label: '교통', icon: '🚇', value: transport, setter: setTransport, placeholder: '월 교통비' },
