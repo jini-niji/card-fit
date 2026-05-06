@@ -1078,49 +1078,77 @@ function App() {
         border-color: rgba(37, 99, 235, 0.28) !important;
       }
 
-      @media (max-width: 1180px) {
+      @media (min-width: 761px) {
+        .recommend-grid {
+          grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+          gap: 22px !important;
+        }
+
+        .recommend-card {
+          padding: 24px !important;
+        }
+
+        .recommend-card h2 {
+          font-size: 24px !important;
+          line-height: 1.18 !important;
+          word-break: keep-all !important;
+        }
+      }
+
+      @media (max-width: 980px) and (min-width: 761px) {
         .result-summary-grid { grid-template-columns: 1fr !important; }
         .spend-result-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
-        .recommend-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
       }
 
       @media (max-width: 760px) {
+        html, body, #root {
+          width: 100% !important;
+          max-width: 100% !important;
+          overflow-x: hidden !important;
+        }
+
+        /* 모바일에서는 전체 여백을 줄여서 한 화면에 더 많이 보이게 함 */
+        #root > div > div {
+          padding: 20px 14px 44px !important;
+        }
+
         .hero-grid,
         .result-summary-grid,
         .result-analysis-top,
         .recommend-grid,
-        .spend-result-grid,
         .form-grid-2,
         .spend-form-grid {
           grid-template-columns: 1fr !important;
         }
 
         .hero-grid {
-          padding: 30px 22px !important;
-          gap: 28px !important;
+          padding: 26px 20px !important;
+          gap: 22px !important;
           min-height: auto !important;
-          border-radius: 28px !important;
+          border-radius: 26px !important;
         }
 
         .hero-grid h1 {
-          font-size: 54px !important;
+          font-size: 46px !important;
           line-height: 1.05 !important;
           word-break: keep-all !important;
+          margin-bottom: 14px !important;
         }
 
         .hero-grid p {
-          font-size: 16px !important;
-          line-height: 1.6 !important;
+          font-size: 15px !important;
+          line-height: 1.55 !important;
           word-break: keep-all !important;
+          margin-bottom: 22px !important;
         }
 
         .upload-card {
-          padding: 24px 18px !important;
-          border-radius: 28px !important;
+          padding: 22px 18px !important;
+          border-radius: 26px !important;
         }
 
         .upload-card h2 {
-          font-size: 24px !important;
+          font-size: 23px !important;
           line-height: 1.25 !important;
         }
 
@@ -1128,7 +1156,7 @@ function App() {
           flex-direction: column !important;
           align-items: flex-start !important;
           gap: 8px !important;
-          padding: 18px !important;
+          padding: 16px !important;
         }
 
         .upload-card label span {
@@ -1137,9 +1165,14 @@ function App() {
           word-break: keep-all !important;
         }
 
+        select,
+        input {
+          font-size: 14px !important;
+        }
+
         .spend-input-card {
-          padding: 20px !important;
-          border-radius: 24px !important;
+          padding: 18px !important;
+          border-radius: 22px !important;
         }
 
         .spend-input-card:hover,
@@ -1161,79 +1194,235 @@ function App() {
           pointer-events: none !important;
         }
 
+        /* 결과 상단: 제목/설명 공간 축소 */
         .result-header-panel {
-          padding: 28px 22px !important;
-          margin-bottom: 24px !important;
-          border-radius: 28px !important;
+          padding: 22px 18px !important;
+          margin-bottom: 18px !important;
+          border-radius: 24px !important;
+        }
+
+        .result-header-panel > div {
+          margin-bottom: 10px !important;
+          padding: 7px 11px !important;
+          font-size: 12px !important;
         }
 
         .result-header-title {
-          font-size: 36px !important;
-          line-height: 1.12 !important;
+          font-size: 32px !important;
+          line-height: 1.1 !important;
+          margin-bottom: 10px !important;
           word-break: keep-all !important;
         }
 
+        .result-header-title + p {
+          font-size: 14px !important;
+          line-height: 1.45 !important;
+        }
+
+        /* 소비패턴 분석: 2열 작은 카드로 압축 */
         .result-analysis-top {
-          gap: 18px !important;
-          margin-bottom: 22px !important;
+          grid-template-columns: 1fr !important;
+          gap: 12px !important;
+          margin-bottom: 16px !important;
         }
 
         .result-analysis-top h2 {
-          font-size: 28px !important;
+          font-size: 24px !important;
           line-height: 1.15 !important;
+          text-align: left !important;
           word-break: keep-all !important;
-          text-align: center !important;
         }
 
         .result-analysis-top p {
-          text-align: center !important;
-          font-size: 15px !important;
+          font-size: 13px !important;
+          line-height: 1.45 !important;
+          margin-top: 6px !important;
+          text-align: left !important;
         }
 
         .result-analysis-top > div:last-child {
           width: 100% !important;
-          text-align: center !important;
-          padding: 18px 20px !important;
+          text-align: left !important;
+          padding: 14px 16px !important;
+          border-radius: 20px !important;
+        }
+
+        .result-analysis-top > div:last-child > div:first-child {
+          font-size: 12px !important;
+        }
+
+        .result-analysis-top > div:last-child > div:last-child {
+          font-size: 22px !important;
         }
 
         .spend-result-grid {
-          gap: 14px !important;
+          grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          gap: 10px !important;
         }
 
         .result-spend-card {
+          padding: 13px !important;
+          border-radius: 18px !important;
+          min-height: 118px !important;
+        }
+
+        .result-spend-card > div:first-child {
+          width: 54px !important;
+          height: 54px !important;
+          right: -18px !important;
+          top: -18px !important;
+        }
+
+        .result-spend-card > div:nth-child(2) {
+          margin-bottom: 10px !important;
+          align-items: flex-start !important;
+        }
+
+        .result-spend-card > div:nth-child(2) > div:first-child {
+          gap: 7px !important;
+        }
+
+        .result-spend-card > div:nth-child(2) > div:first-child > div:first-child {
+          width: 32px !important;
+          height: 32px !important;
+          border-radius: 11px !important;
+          font-size: 17px !important;
+        }
+
+        .result-spend-card > div:nth-child(2) > div:first-child > div:last-child {
+          font-size: 14px !important;
+          line-height: 1.2 !important;
+        }
+
+        .result-spend-card > div:nth-child(2) > div:last-child {
+          font-size: 14px !important;
+        }
+
+        .result-spend-card [data-amount='true'] {
+          font-size: 17px !important;
+          line-height: 1.2 !important;
+          word-break: keep-all !important;
+          white-space: normal !important;
+        }
+
+        .result-spend-card [data-amount='true'] + div {
+          margin-top: 10px !important;
+          height: 6px !important;
+        }
+
+        /* 추천 섹션 헤더도 한눈에 들어오도록 축소 */
+        .result-summary-grid {
+          gap: 12px !important;
+          margin-bottom: 14px !important;
+        }
+
+        .result-summary-grid > div:first-child {
           padding: 20px !important;
           border-radius: 24px !important;
           min-height: auto !important;
         }
 
-        .result-spend-card > div:first-child {
-          width: 70px !important;
-          height: 70px !important;
-          right: -20px !important;
-          top: -20px !important;
+        .result-summary-grid > div:first-child h2 {
+          font-size: 24px !important;
+          line-height: 1.15 !important;
+          margin: 0 !important;
         }
 
-        .result-spend-card [data-amount='true'] {
-          font-size: 22px !important;
-          line-height: 1.15 !important;
-          word-break: keep-all !important;
+        .result-summary-grid > div:first-child p {
+          font-size: 13px !important;
+          line-height: 1.45 !important;
+          margin-top: 8px !important;
+        }
+
+        .result-summary-grid > div:last-child {
+          padding: 14px !important;
+          border-radius: 22px !important;
+        }
+
+        .result-summary-grid > div:last-child button {
+          width: 100% !important;
+          padding: 13px 16px !important;
+        }
+
+        /* 모바일 추천카드: 이미지/큰 여백 제거하고 리스트형으로 압축 */
+        .recommend-grid {
+          gap: 12px !important;
+          margin-bottom: 18px !important;
         }
 
         .recommend-card {
-          padding: 24px !important;
-          border-radius: 28px !important;
+          padding: 18px !important;
+          border-radius: 22px !important;
           width: 100% !important;
+          min-height: auto !important;
+        }
+
+        .recommend-card > div:first-child {
+          width: 80px !important;
+          height: 80px !important;
+          right: -28px !important;
+          top: -28px !important;
+        }
+
+        .recommend-card > div:nth-child(2) {
+          margin-bottom: 12px !important;
+        }
+
+        .recommend-card > div:nth-child(2) > div:first-child {
+          margin-bottom: 12px !important;
+        }
+
+        .recommend-card span {
+          font-size: 11px !important;
+          padding: 7px 10px !important;
         }
 
         .recommend-card h2 {
-          font-size: 26px !important;
-          line-height: 1.15 !important;
+          font-size: 20px !important;
+          line-height: 1.2 !important;
+          margin-bottom: 4px !important;
           word-break: keep-all !important;
         }
 
-        .card-visual-wrap > div {
-          width: 100% !important;
-          max-width: 260px !important;
+        .recommend-card h2 + p {
+          font-size: 14px !important;
+        }
+
+        .recommend-card button[aria-label='찜하기'] {
+          width: 38px !important;
+          height: 38px !important;
+          border-radius: 13px !important;
+          font-size: 18px !important;
+        }
+
+        .card-visual-wrap {
+          display: none !important;
+        }
+
+        .recommend-card > div:nth-child(4) {
+          padding: 13px !important;
+          border-radius: 16px !important;
+          margin-bottom: 12px !important;
+        }
+
+        .recommend-card > div:nth-child(4) > div:first-child {
+          font-size: 12px !important;
+          margin-bottom: 8px !important;
+        }
+
+        .recommend-card > div:nth-child(4) > div:last-child {
+          gap: 6px !important;
+        }
+
+        .recommend-card > div:nth-child(4) > div:last-child > div {
+          font-size: 13px !important;
+          line-height: 1.35 !important;
+        }
+
+        .recommend-card > button:last-child {
+          padding: 12px 14px !important;
+          border-radius: 15px !important;
+          font-size: 14px !important;
         }
 
         button { max-width: 100% !important; }
