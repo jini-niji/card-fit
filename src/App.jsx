@@ -1273,6 +1273,14 @@ function App() {
           right: -22px !important;
           top: -22px !important;
         }
+        .recommend-grid {
+          grid-template-columns: 1fr !important;
+          gap: 18px !important;
+        }
+        .result-spend-card {
+          padding: 20px !important;
+          margin-bottom: 8px !important;
+        }
       }
       @keyframes growBar {
         from { transform: scaleX(0); }
@@ -1479,7 +1487,15 @@ function App() {
           </div>
         </div>
 
-        <div className="recommend-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '24px', marginBottom: '28px' }}>
+        <div
+          className="recommend-grid"
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, 1fr)', // 👈 핵심
+            gap: '24px',
+            marginTop: '32px'
+          }}
+          >
           {displayedResults.map((card, index) => {
             const isBest = index === 0
             const benefitPercent = maxBenefitValue ? Math.round((card.totalBenefit / maxBenefitValue) * 100) : 0
@@ -1545,7 +1561,7 @@ function App() {
           <div className="result-analysis-top" style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '28px', alignItems: 'center', marginBottom: '30px' }}>
             <div>
               <h2 style={{ ...sectionTitleStyle, fontSize: '34px', margin: 0, textAlign: 'left' }}>소비패턴 분석</h2>
-              <p style={{ color: '#667085', fontWeight: 800, margin: '12px 0 0', fontSize: '17px', lineHeight: 1.6 }}>
+              <p style={{ color: '#667085', fontWeight: 800, margin: '12px 0 0', fontSize: '17px', lineHeight: 1.6 , marginTop: '40px'}}>
                 {analysisSource === 'statement'
                   ? `명세서 ${statementSummary.totalRows}건을 기준으로 분석했습니다.`
                   : '입력한 소비금액을 기준으로 분석했습니다.'}
@@ -1556,8 +1572,15 @@ function App() {
               <div style={{ fontWeight: 950, fontSize: '28px', letterSpacing: '-0.05em' }}>{totalConsumption.toLocaleString()}원</div>
             </div>
           </div>
-
-          <div className="spend-result-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '18px', width: '100%' }}>
+          <div
+            className="spend-result-grid"
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(2, 1fr)',
+              gap: '20px', // 👈 14 → 20으로 늘려
+              marginTop: '24px'
+            }}
+          >
             {spendingItems.map((item, index) => {
               const percent = totalConsumption ? Math.round((item.value / totalConsumption) * 100) : 0
               return (
