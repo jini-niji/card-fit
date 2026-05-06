@@ -1013,56 +1013,66 @@ function App() {
         background: #f8fbff !important;
         overflow-x: hidden !important;
       }
+
       body { display: block !important; }
+
       #root {
         max-width: none !important;
         text-align: initial !important;
       }
+
+      * { box-sizing: border-box; }
       body * { max-width: 100%; }
-      * {
-        box-sizing: border-box;
-      }
-      .spend-input-card, .result-spend-card, .recommend-card, .primary-action, .upload-card {
+
+      .spend-input-card,
+      .result-spend-card,
+      .recommend-card,
+      .primary-action,
+      .upload-card {
         transition: transform 220ms cubic-bezier(.2,.8,.2,1), box-shadow 220ms ease, border-color 220ms ease, background 220ms ease;
       }
-      .spend-input-card, .result-spend-card, .recommend-card {
+
+      .spend-input-card,
+      .result-spend-card,
+      .recommend-card {
         animation: cardRise 520ms cubic-bezier(.2,.8,.2,1) both;
       }
-      .spend-input-card:hover, .result-spend-card:hover, .recommend-card:hover {
+
+      .spend-input-card:hover,
+      .result-spend-card:hover,
+      .recommend-card:hover {
         transform: translateY(-8px) scale(1.012);
         box-shadow: 0 30px 70px rgba(15, 23, 42, 0.14) !important;
         border-color: rgba(37, 99, 235, 0.32) !important;
       }
+
       .primary-action:hover {
         transform: translateY(-4px) scale(1.01);
         box-shadow: 0 28px 60px rgba(37, 99, 235, 0.32) !important;
       }
-      .upload-card {
-        animation: softGlow 3.2s ease-in-out infinite alternate;
-      }
+
+      .upload-card { animation: softGlow 3.2s ease-in-out infinite alternate; }
+
       .spend-bar {
         animation: growBar 900ms cubic-bezier(.2,.8,.2,1) both;
         transform-origin: left center;
       }
-      .match-ring {
-        animation: ringPop 760ms cubic-bezier(.2,.8,.2,1) both;
-      }
-      .benefit-chip {
-        transition: transform 180ms ease, background 180ms ease;
-      }
+
+      .match-ring { animation: ringPop 760ms cubic-bezier(.2,.8,.2,1) both; }
+
+      .benefit-chip { transition: transform 180ms ease, background 180ms ease; }
+
       .recommend-card:hover .benefit-chip {
         transform: translateY(-2px);
         background: rgba(239,246,255,0.98) !important;
       }
-      .card-visual-wrap {
-        transition: transform 260ms cubic-bezier(.2,.8,.2,1);
-      }
-      .recommend-card:hover .card-visual-wrap {
-        transform: rotate(2deg) scale(1.04);
-      }
-      .amount-pill {
-        transition: background 180ms ease, border-color 180ms ease, transform 180ms ease;
-      }
+
+      .card-visual-wrap { transition: transform 260ms cubic-bezier(.2,.8,.2,1); }
+
+      .recommend-card:hover .card-visual-wrap { transform: rotate(2deg) scale(1.04); }
+
+      .amount-pill { transition: background 180ms ease, border-color 180ms ease, transform 180ms ease; }
+
       .spend-input-card:hover .amount-pill {
         background: #f8fbff !important;
         border-color: rgba(37, 99, 235, 0.28) !important;
@@ -1073,18 +1083,35 @@ function App() {
         .spend-result-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
         .recommend-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
       }
+
       @media (max-width: 760px) {
-        .hero-grid {
+        .hero-grid,
+        .result-summary-grid,
+        .result-analysis-top,
+        .recommend-grid,
+        .spend-result-grid,
+        .form-grid-2,
+        .spend-form-grid {
           grid-template-columns: 1fr !important;
-          padding: 28px 22px !important;
-          gap: 24px !important;
-          min-height: auto !important;
         }
 
-        .spend-result-grid,
-        .recommend-grid,
-        .result-analysis-top {
-          grid-template-columns: 1fr !important;
+        .hero-grid {
+          padding: 30px 22px !important;
+          gap: 28px !important;
+          min-height: auto !important;
+          border-radius: 28px !important;
+        }
+
+        .hero-grid h1 {
+          font-size: 54px !important;
+          line-height: 1.05 !important;
+          word-break: keep-all !important;
+        }
+
+        .hero-grid p {
+          font-size: 16px !important;
+          line-height: 1.6 !important;
+          word-break: keep-all !important;
         }
 
         .upload-card {
@@ -1110,88 +1137,123 @@ function App() {
           word-break: keep-all !important;
         }
 
-        select {
-          font-size: 14px !important;
-          padding: 15px 14px !important;
-        }
-
-        input {
-          font-size: 14px !important;
-          padding: 15px 14px !important;
-        }
-
         .spend-input-card {
-          padding: 18px !important;
+          padding: 20px !important;
           border-radius: 24px !important;
         }
 
-        .spend-input-card div {
-          font-size: 17px !important;
+        .spend-input-card:hover,
+        .result-spend-card:hover,
+        .recommend-card:hover,
+        .primary-action:hover {
+          transform: none !important;
+        }
+
+        .amount-pill input {
+          padding-right: 54px !important;
+          font-size: 16px !important;
+          text-align: right !important;
+        }
+
+        .amount-pill span {
+          right: 16px !important;
+          font-size: 15px !important;
+          pointer-events: none !important;
         }
 
         .result-header-panel {
-          padding: 34px 22px !important;
+          padding: 28px 22px !important;
+          margin-bottom: 24px !important;
+          border-radius: 28px !important;
         }
 
         .result-header-title {
-          font-size: 42px !important;
+          font-size: 36px !important;
+          line-height: 1.12 !important;
+          word-break: keep-all !important;
         }
-        .form-grid-2,
-        .spend-form-grid {
-          grid-template-columns: 1fr !important;
+
+        .result-analysis-top {
+          gap: 18px !important;
+          margin-bottom: 22px !important;
         }
+
+        .result-analysis-top h2 {
+          font-size: 28px !important;
+          line-height: 1.15 !important;
+          word-break: keep-all !important;
+          text-align: center !important;
+        }
+
+        .result-analysis-top p {
+          text-align: center !important;
+          font-size: 15px !important;
+        }
+
+        .result-analysis-top > div:last-child {
+          width: 100% !important;
+          text-align: center !important;
+          padding: 18px 20px !important;
+        }
+
+        .spend-result-grid {
+          gap: 14px !important;
+        }
+
+        .result-spend-card {
+          padding: 20px !important;
+          border-radius: 24px !important;
+          min-height: auto !important;
+        }
+
+        .result-spend-card > div:first-child {
+          width: 70px !important;
+          height: 70px !important;
+          right: -20px !important;
+          top: -20px !important;
+        }
+
+        .result-spend-card [data-amount='true'] {
+          font-size: 22px !important;
+          line-height: 1.15 !important;
+          word-break: keep-all !important;
+        }
+
+        .recommend-card {
+          padding: 24px !important;
+          border-radius: 28px !important;
+          width: 100% !important;
+        }
+
+        .recommend-card h2 {
+          font-size: 26px !important;
+          line-height: 1.15 !important;
+          word-break: keep-all !important;
+        }
+
+        .card-visual-wrap > div {
+          width: 100% !important;
+          max-width: 260px !important;
+        }
+
+        button { max-width: 100% !important; }
       }
 
-      .hero-grid,
-      .result-summary-grid,
-      .result-analysis-top,
-      .spend-result-grid,
-      .recommend-grid {
-        grid-template-columns: 1fr !important;
-      }
-
-      .result-header-panel {
-        padding: 28px 22px !important;
-        border-radius: 26px !important;
-      }
-
-      .result-header-title {
-        font-size: 34px !important;
-        line-height: 1.15 !important;
-      }
-
-      .recommend-card {
-        padding: 24px !important;
-        width: 100% !important;
-      }
-
-      .recommend-card h2 {
-        font-size: 26px !important;
-        line-height: 1.15 !important;
-        word-break: keep-all !important;
-      }
-
-      .card-visual-wrap > div {
-        width: 100% !important;
-        max-width: 260px !important;
-      }
-
-      button {
-        max-width: 100% !important;
-      }
-    }
       @keyframes growBar {
         from { transform: scaleX(0); }
         to { transform: scaleX(1); }
       }
+
       @keyframes cardRise {
         from { opacity: 0; transform: translateY(18px); }
         to { opacity: 1; transform: translateY(0); }
       }
+
       @keyframes ringPop {
         from { opacity: 0; transform: scale(.84) rotate(-12deg); }
         to { opacity: 1; transform: scale(1) rotate(0deg); }
       }
+
       @keyframes softGlow {
         from { box-shadow: 0 24px 56px rgba(37,99,235,0.22); }
         to { box-shadow: 0 32px 72px rgba(124,58,237,0.28); }
@@ -1357,6 +1419,7 @@ function App() {
 
   return (
     <div style={pageStyle}>
+      <MotionStyles />
       <div style={containerStyle}>
         <div className="result-header-panel" style={{ ...panelStyle, padding: '46px 38px', textAlign: 'center', marginBottom: '48px', background: 'linear-gradient(135deg, rgba(239,246,255,0.96), rgba(245,243,255,0.96))' }}>
           <div style={{ ...tagStyle, display: 'inline-flex', marginBottom: '18px' }}>STEP 02</div>
@@ -1393,7 +1456,7 @@ function App() {
                     </div>
                     <div style={{ fontSize: '20px', fontWeight: 950, letterSpacing: '-0.05em', color: '#2563eb' }}>{percent}%</div>
                   </div>
-                  <div style={{ color: '#111827', fontSize: '23px', fontWeight: 950, letterSpacing: '-0.05em' }}>{item.value.toLocaleString()}원</div>
+                  <div data-amount="true" style={{ color: '#111827', fontSize: '23px', fontWeight: 950, letterSpacing: '-0.05em' }}>{item.value.toLocaleString()}원</div>
                   <div style={{ marginTop: '16px', height: '8px', background: '#eef2f7', borderRadius: '999px', overflow: 'hidden' }}>
                     <div className="spend-bar" style={{ width: `${percent}%`, height: '100%', background: 'linear-gradient(90deg, #2563eb, #7c3aed)', borderRadius: '999px' }} />
                   </div>
