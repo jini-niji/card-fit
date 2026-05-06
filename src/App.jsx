@@ -42,14 +42,6 @@ function App() {
   })
 
   const [crawledCards, setCrawledCards] = useState([])
-  const [isMobile, setIsMobile] = useState(false)
-
-  useEffect(() => {
-    const checkMobile = () => setIsMobile(window.innerWidth <= 760)
-    checkMobile()
-    window.addEventListener('resize', checkMobile)
-    return () => window.removeEventListener('resize', checkMobile)
-  }, [])
 
   useEffect(() => {
     localStorage.setItem('favorites', JSON.stringify(favorites))
@@ -185,58 +177,8 @@ function App() {
   ]
 
   const amountColumnCandidates = [
-    '결제원금', '이용금액', '승인금액', '사용금액', '매출금액', '청구금액', '결제금액', '원금', '금액', 'amount'
+    '이용금액', '결제금액', '승인금액', '사용금액', '매출금액', '청구금액', '결제원금', '원금', '금액', 'amount'
   ]
-
-  const unsafeAmountColumnKeywords = [
-    '누적', '누계', '합계', '총계', '월계', '잔액', '입금', '한도', '할인', '면제', '포인트', '적립', '캐시백', '수수료', '연체', '청구예정'
-  ]
-
-  const shouldSkipSheet = (sheetName) => {
-    const normalized = normalizeHeader(sheetName)
-    return ['요약', 'summary', '합계', '청구', '결제', '입금', '포인트', '적립', '캐시백', '혜택', '할부', '안내'].some((keyword) =>
-      normalized.includes(normalizeHeader(keyword))
-    )
-  }
-
-  const isUnsafeAmountHeader = (header) => {
-    const normalized = normalizeHeader(header)
-    return unsafeAmountColumnKeywords.some((keyword) => normalized.includes(normalizeHeader(keyword)))
-  }
-
-  const findAmountColumnIndex = (rawHeaders) => {
-    const headers = rawHeaders.map((header) => normalizeHeader(header))
-
-    // 1순위: 실제 거래 원금/이용금액 계열 컬럼을 우선 사용
-    const preferred = ['결제원금', '이용금액', '승인금액', '사용금액', '매출금액', '청구금액', 'amount']
-    for (const candidate of preferred) {
-      const idx = headers.findIndex((header, index) =>
-        header.includes(normalizeHeader(candidate)) && !isUnsafeAmountHeader(rawHeaders[index])
-      )
-      if (idx >= 0) return idx
-    }
-
-    // 2순위: 단순 '금액' 컬럼. 단, 합계/포인트/할인/잔액 계열은 제외
-    return headers.findIndex((header, index) =>
-      header.includes(normalizeHeader('금액')) && !isUnsafeAmountHeader(rawHeaders[index])
-    )
-  }
-
-  const makeRowKey = (row) => {
-    const date = String(row.date || '').replace(/[^0-9]/g, '')
-    const merchant = normalizeMerchantName(row.merchant)
-    return `${date}|${merchant}|${Math.round(row.amount)}`
-  }
-
-  const dedupeRows = (rows) => {
-    const seen = new Set()
-    return rows.filter((row) => {
-      const key = makeRowKey(row)
-      if (seen.has(key)) return false
-      seen.add(key)
-      return true
-    })
-  }
 
   // 실제 카드 명세서에는 브랜드명이 아니라 법인명/PG사명으로 찍히는 경우가 많아서
   // 단순 키워드가 아니라 "실제 명세서 표기명" 기준으로 최대한 넓게 분류합니다.
@@ -446,7 +388,7 @@ function App() {
     return 'etc'
   }
 
-  const ignoredMerchantKeywords = ['합계', '총계', '소계', '누계', '월계', '미리입금', '할인,면제', '취소', '입금후잔액', '청구금액합계', '총이용금액', '전월잔액', '결제예정', '결제금액', '입금액']
+  const ignoredMerchantKeywords = ['합계', '총계', '소계', '미리입금', '할인,면제', '취소', '입금후잔액']
 
   const parseCsvLine = (line) => {
     const result = []
@@ -503,7 +445,7 @@ function App() {
       const headers = row.map((cell) => normalizeHeader(cell))
       const dateIndex = findColumnIndex(headers, dateColumnCandidates)
       const merchantIndex = findColumnIndex(headers, merchantColumnCandidates)
-      const amountIndex = findAmountColumnIndex(row)
+      const amountIndex = findColumnIndex(headers, amountColumnCandidates)
       let score = 0
       if (dateIndex >= 0) score += 1
       if (merchantIndex >= 0) score += 2
@@ -528,7 +470,7 @@ function App() {
     const headers = rawHeaders.map((header) => normalizeHeader(header))
     const dateIndex = findColumnIndex(headers, dateColumnCandidates)
     const merchantIndex = findColumnIndex(headers, merchantColumnCandidates)
-    const amountIndex = findAmountColumnIndex(rawHeaders)
+    const amountIndex = findColumnIndex(headers, amountColumnCandidates)
 
     console.log(`${sheetName || '명세서'} 컬럼명:`, rawHeaders)
     console.log(`${sheetName || '명세서'} 자동 탐색 결과:`, {
@@ -562,7 +504,7 @@ function App() {
     const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
     const matrix = lines.map((line) => parseCsvLine(line))
     const parsed = parseRowsFromMatrix(matrix, 'CSV')
-    return dedupeRows(parsed.length > 0 ? parsed : parseRowsByPattern(matrix, 'CSV'))
+    return parsed.length > 0 ? parsed : parseRowsByPattern(matrix, 'CSV')
   }
 
   const parseStatementWorkbook = (arrayBuffer) => {
@@ -570,23 +512,18 @@ function App() {
     const rows = []
 
     workbook.SheetNames.forEach((sheetName) => {
-      if (shouldSkipSheet(sheetName)) return
-
+      if (String(sheetName).includes('취소')) return
       const worksheet = workbook.Sheets[sheetName]
       const matrix = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '', raw: false })
       let parsedSheetRows = parseRowsFromMatrix(matrix, sheetName)
-
-      // 패턴 기반 파싱은 표 헤더가 없는 단순 명세서에서만 사용합니다.
-      // 요약/합계 영역까지 읽으면 실제 사용금액보다 크게 집계될 수 있어 보수적으로 제한합니다.
-      if (parsedSheetRows.length === 0 && matrix.length <= 120) {
+      if (parsedSheetRows.length === 0) {
         console.warn(`${sheetName} 헤더 기반 파싱 실패, 패턴 기반 파싱으로 재시도`)
         parsedSheetRows = parseRowsByPattern(matrix, sheetName)
       }
-
       rows.push(...parsedSheetRows)
     })
 
-    return dedupeRows(rows)
+    return rows
   }
 
 
@@ -661,7 +598,6 @@ function App() {
       totalRows: rows.length,
       totalAmount: Object.values(totals).reduce((sum, value) => sum + value, 0),
       months: monthCount,
-      totals,
       monthlyAverage: {
         food: Math.round(totals.food / monthCount),
         transport: Math.round(totals.transport / monthCount),
@@ -766,7 +702,7 @@ function App() {
       const text = result.data.text || ''
       setOcrText(text)
   
-      const rows = dedupeRows(parseRowsFromOcrText(text))
+      const rows = parseRowsFromOcrText(text)
       setOcrRows(rows)
   
       if (rows.length === 0) {
@@ -778,12 +714,12 @@ function App() {
   
       setStatementRows(rows)
       setAnalysisSource('statement')
-      setFood(formatNumber(String(summary.totals.food)))
-      setTransport(formatNumber(String(summary.totals.transport)))
-      setCafe(formatNumber(String(summary.totals.cafe)))
-      setShopping(formatNumber(String(summary.totals.shopping)))
-      setFuel(formatNumber(String(summary.totals.fuel)))
-      setEtc(formatNumber(String(summary.totals.etc)))
+      setFood(formatNumber(String(summary.monthlyAverage.food)))
+      setTransport(formatNumber(String(summary.monthlyAverage.transport)))
+      setCafe(formatNumber(String(summary.monthlyAverage.cafe)))
+      setShopping(formatNumber(String(summary.monthlyAverage.shopping)))
+      setFuel(formatNumber(String(summary.monthlyAverage.fuel)))
+      setEtc(formatNumber(String(summary.monthlyAverage.etc)))
   
       setUploadMessage(`${rows.length}건의 소비내역 분석이 완료되었습니다.`)
     } catch (error) {
@@ -837,12 +773,12 @@ function App() {
         const summary = calculateStatementSummary(rows)
         setStatementRows(rows)
         setAnalysisSource('statement')
-        setFood(formatNumber(String(summary.totals.food)))
-        setTransport(formatNumber(String(summary.totals.transport)))
-        setCafe(formatNumber(String(summary.totals.cafe)))
-        setShopping(formatNumber(String(summary.totals.shopping)))
-        setFuel(formatNumber(String(summary.totals.fuel)))
-        setEtc(formatNumber(String(summary.totals.etc)))
+        setFood(formatNumber(String(summary.monthlyAverage.food)))
+        setTransport(formatNumber(String(summary.monthlyAverage.transport)))
+        setCafe(formatNumber(String(summary.monthlyAverage.cafe)))
+        setShopping(formatNumber(String(summary.monthlyAverage.shopping)))
+        setFuel(formatNumber(String(summary.monthlyAverage.fuel)))
+        setEtc(formatNumber(String(summary.monthlyAverage.etc)))
         setUploadMessage(`${rows.length}건의 소비내역 분석이 완료되었습니다.`)
       } catch (error) {
         console.error(error)
@@ -979,7 +915,7 @@ function App() {
     const items = Object.entries(spending).map(([key, value]) => ({ label: categoryLabels[key], value }))
     const top = [...items].sort((a, b) => b.value - a.value)[0]
     if (!top || top.value === 0) return '입력한 소비 패턴을 바탕으로 카드를 추천했습니다.'
-    const sourceText = analysisSource === 'statement' ? '업로드한 명세서 기반 소비에서' : '직접 입력한 소비금액에서'
+    const sourceText = analysisSource === 'statement' ? '최근 3개월 명세서 기반 월평균 소비에서' : '직접 입력한 소비금액에서'
     return `${sourceText} ${top.label} 비중이 높은 것으로 분석되어 추천 결과를 정리했습니다.`
   }
 
@@ -987,7 +923,7 @@ function App() {
     const entries = Object.entries(spending).filter(([, value]) => value > 0).sort((a, b) => b[1] - a[1])
     const tags = entries.slice(0, 2).map(([key]) => `${categoryLabels[key]} 중심`)
     tags.push(cardType === '신용카드' ? '신용카드 선호' : '체크카드 선호')
-    if (analysisSource === 'statement') tags.push('명세서 기반 분석')
+    if (analysisSource === 'statement') tags.push('3개월 명세서 분석')
     return tags
   }
 
@@ -1078,94 +1014,191 @@ function App() {
         overflow-x: hidden !important;
       }
       body { display: block !important; }
-      #root { max-width: none !important; text-align: initial !important; }
+      #root {
+        max-width: none !important;
+        text-align: initial !important;
+      }
       body * { max-width: 100%; }
-      * { box-sizing: border-box; }
-
+      * {
+        box-sizing: border-box;
+      }
       .spend-input-card, .result-spend-card, .recommend-card, .primary-action, .upload-card {
         transition: transform 220ms cubic-bezier(.2,.8,.2,1), box-shadow 220ms ease, border-color 220ms ease, background 220ms ease;
       }
-      .spend-input-card, .result-spend-card, .recommend-card { animation: cardRise 520ms cubic-bezier(.2,.8,.2,1) both; }
+      .spend-input-card, .result-spend-card, .recommend-card {
+        animation: cardRise 520ms cubic-bezier(.2,.8,.2,1) both;
+      }
       .spend-input-card:hover, .result-spend-card:hover, .recommend-card:hover {
         transform: translateY(-8px) scale(1.012);
         box-shadow: 0 30px 70px rgba(15, 23, 42, 0.14) !important;
         border-color: rgba(37, 99, 235, 0.32) !important;
       }
-      .primary-action:hover { transform: translateY(-4px) scale(1.01); box-shadow: 0 28px 60px rgba(37, 99, 235, 0.32) !important; }
-      .upload-card { animation: softGlow 3.2s ease-in-out infinite alternate; }
-      .spend-bar { animation: growBar 900ms cubic-bezier(.2,.8,.2,1) both; transform-origin: left center; }
-      .card-visual-wrap { transition: transform 260ms cubic-bezier(.2,.8,.2,1); }
-      .recommend-card:hover .card-visual-wrap { transform: rotate(2deg) scale(1.04); }
-      .amount-pill { transition: background 180ms ease, border-color 180ms ease, transform 180ms ease; }
-      .spend-input-card:hover .amount-pill { background: #f8fbff !important; border-color: rgba(37, 99, 235, 0.28) !important; }
+      .primary-action:hover {
+        transform: translateY(-4px) scale(1.01);
+        box-shadow: 0 28px 60px rgba(37, 99, 235, 0.32) !important;
+      }
+      .upload-card {
+        animation: softGlow 3.2s ease-in-out infinite alternate;
+      }
+      .spend-bar {
+        animation: growBar 900ms cubic-bezier(.2,.8,.2,1) both;
+        transform-origin: left center;
+      }
+      .match-ring {
+        animation: ringPop 760ms cubic-bezier(.2,.8,.2,1) both;
+      }
+      .benefit-chip {
+        transition: transform 180ms ease, background 180ms ease;
+      }
+      .recommend-card:hover .benefit-chip {
+        transform: translateY(-2px);
+        background: rgba(239,246,255,0.98) !important;
+      }
+      .card-visual-wrap {
+        transition: transform 260ms cubic-bezier(.2,.8,.2,1);
+      }
+      .recommend-card:hover .card-visual-wrap {
+        transform: rotate(2deg) scale(1.04);
+      }
+      .amount-pill {
+        transition: background 180ms ease, border-color 180ms ease, transform 180ms ease;
+      }
+      .spend-input-card:hover .amount-pill {
+        background: #f8fbff !important;
+        border-color: rgba(37, 99, 235, 0.28) !important;
+      }
 
       @media (max-width: 1180px) {
         .result-summary-grid { grid-template-columns: 1fr !important; }
         .spend-result-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
-        .recommend-grid { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+        .recommend-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
       }
-
       @media (max-width: 760px) {
-        .hero-grid { grid-template-columns: 1fr !important; padding: 32px 24px !important; gap: 28px !important; min-height: auto !important; }
-        .hero-grid h1 { font-size: 50px !important; line-height: 1.05 !important; }
-        .hero-grid p { font-size: 17px !important; line-height: 1.65 !important; }
-        .mobile-step-panel { padding: 34px 20px !important; margin-bottom: 26px !important; }
-        .mobile-step-panel h1 { font-size: 42px !important; line-height: 1.08 !important; margin-bottom: 18px !important; }
-        .mobile-step-panel p { font-size: 16px !important; line-height: 1.65 !important; margin-bottom: 28px !important; }
-        .upload-card { padding: 26px 20px !important; border-radius: 30px !important; margin-top: 14px !important; }
-        .upload-card h2 { font-size: 24px !important; line-height: 1.25 !important; }
-        .upload-card label { flex-direction: column !important; align-items: flex-start !important; gap: 8px !important; padding: 18px !important; }
-        .form-grid-2, .spend-form-grid { grid-template-columns: 1fr !important; }
-        select, input { font-size: 15px !important; }
-        .amount-pill input { padding-right: 54px !important; font-size: 17px !important; }
-        .amount-pill span { right: 17px !important; font-size: 15px !important; }
+        html, body, #root { overflow-x: hidden !important; }
+        body * { max-width: 100%; }
 
-        .result-header-panel { padding: 30px 20px !important; margin-bottom: 26px !important; border-radius: 28px !important; }
-        .result-header-title { font-size: 38px !important; line-height: 1.08 !important; }
-        .result-summary-grid { grid-template-columns: 1fr !important; gap: 14px !important; margin-bottom: 18px !important; }
-        .result-summary-card { padding: 24px 20px !important; border-radius: 28px !important; }
-        .result-summary-card h2 { font-size: 25px !important; line-height: 1.18 !important; }
-        .favorite-box { padding: 16px !important; }
+        .hero-grid,
+        .result-summary-grid,
+        .result-analysis-top,
+        .recommend-grid {
+          grid-template-columns: 1fr !important;
+        }
 
-        .recommend-grid { grid-template-columns: 1fr !important; gap: 14px !important; margin-bottom: 34px !important; }
-        .recommend-card { padding: 18px !important; border-radius: 24px !important; min-height: auto !important; }
-        .recommend-card:hover, .result-spend-card:hover { transform: none !important; }
-        .recommend-card-top { margin-bottom: 0 !important; }
-        .recommend-card-badges { margin-bottom: 10px !important; }
-        .recommend-title { font-size: 21px !important; line-height: 1.22 !important; margin-bottom: 4px !important; }
-        .recommend-company { font-size: 14px !important; }
-        .recommend-heart { width: 40px !important; height: 40px !important; border-radius: 14px !important; }
-        .card-visual-wrap { display: none !important; }
-        .benefit-box { padding: 14px !important; border-radius: 18px !important; margin-bottom: 12px !important; }
-        .benefit-box div { font-size: 14px !important; }
-        .recommend-detail-btn { padding: 13px 16px !important; border-radius: 16px !important; font-size: 14px !important; }
+        .result-header-panel {
+          padding: 28px 22px !important;
+          margin-bottom: 28px !important;
+        }
+        .result-header-title {
+          font-size: 36px !important;
+          line-height: 1.12 !important;
+        }
 
-        .analysis-panel { padding: 26px 18px !important; border-radius: 30px !important; margin-top: 36px !important; margin-bottom: 34px !important; }
-        .result-analysis-top { grid-template-columns: 1fr !important; gap: 16px !important; margin-bottom: 18px !important; }
-        .result-analysis-top h2 { font-size: 28px !important; line-height: 1.15 !important; }
-        .analysis-desc { font-size: 14px !important; line-height: 1.5 !important; margin-top: 8px !important; }
-        .total-consumption-box { width: 100% !important; text-align: left !important; padding: 18px 20px !important; border-radius: 22px !important; }
-        .total-consumption-box .total-label { font-size: 13px !important; }
-        .total-consumption-box .total-amount { font-size: 26px !important; }
+        .spend-form-grid {
+          grid-template-columns: 1fr !important;
+          gap: 12px !important;
+        }
+        .spend-input-card {
+          padding: 18px !important;
+          border-radius: 24px !important;
+        }
+        .spend-input-card > div:first-child {
+          margin-bottom: 10px !important;
+          font-size: 18px !important;
+        }
+        .amount-pill input {
+          width: 100% !important;
+          padding: 15px 46px 15px 16px !important;
+          font-size: 17px !important;
+          text-align: right !important;
+          letter-spacing: -0.04em !important;
+        }
+        .amount-pill span {
+          right: 16px !important;
+          font-size: 14px !important;
+        }
 
-        .spend-result-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 12px !important; }
-        .result-spend-card { padding: 14px !important; border-radius: 20px !important; min-height: 132px !important; box-shadow: 0 10px 24px rgba(15,23,42,0.06) !important; }
-        .spend-bg-circle { right: -36px !important; top: -36px !important; width: 86px !important; height: 86px !important; }
-        .spend-card-head { gap: 8px !important; margin-bottom: 12px !important; align-items: flex-start !important; }
-        .spend-card-left { gap: 7px !important; min-width: 0 !important; }
-        .spend-icon-box { width: 34px !important; height: 34px !important; border-radius: 12px !important; font-size: 18px !important; }
-        .spend-label-text { font-size: 15px !important; line-height: 1.1 !important; word-break: keep-all !important; white-space: nowrap !important; }
-        .spend-percent { font-size: 16px !important; flex-shrink: 0 !important; }
-        .spend-amount { font-size: 18px !important; line-height: 1.12 !important; word-break: keep-all !important; letter-spacing: -0.06em !important; }
-        .spend-bar-wrap { margin-top: 12px !important; height: 6px !important; }
-        .result-actions { margin-top: 18px !important; gap: 10px !important; }
-        .result-actions button { padding: 13px 16px !important; border-radius: 16px !important; font-size: 14px !important; }
+        .spend-result-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          gap: 14px !important;
+        }
+        .result-spend-card {
+          padding: 16px !important;
+          border-radius: 22px !important;
+          min-height: 150px !important;
+        }
+        .result-spend-card > div:nth-child(2) {
+          align-items: flex-start !important;
+          gap: 8px !important;
+          margin-bottom: 12px !important;
+        }
+        .result-spend-card > div:nth-child(2) > div:first-child {
+          gap: 7px !important;
+          min-width: 0 !important;
+        }
+        .result-spend-card > div:nth-child(2) > div:first-child > div:first-child {
+          width: 34px !important;
+          height: 34px !important;
+          border-radius: 12px !important;
+          font-size: 18px !important;
+        }
+        .result-spend-card > div:nth-child(2) > div:first-child > div:last-child {
+          font-size: 15px !important;
+          line-height: 1.15 !important;
+          word-break: keep-all !important;
+        }
+        .result-spend-card > div:nth-child(2) > div:last-child {
+          font-size: 16px !important;
+          flex: 0 0 auto !important;
+        }
+        .result-spend-card > div:nth-child(3) {
+          font-size: 18px !important;
+          line-height: 1.1 !important;
+          word-break: keep-all !important;
+        }
+
+        .recommend-grid {
+          grid-template-columns: 1fr !important;
+          gap: 18px !important;
+        }
+        .recommend-card {
+          width: 100% !important;
+          padding: 22px 18px !important;
+          border-radius: 26px !important;
+        }
+        .recommend-card h2 {
+          font-size: 22px !important;
+          line-height: 1.22 !important;
+          word-break: keep-all !important;
+          text-align: left !important;
+        }
+        .card-visual-wrap {
+          display: none !important;
+        }
+        .recommend-card button {
+          min-height: 48px !important;
+          border-radius: 16px !important;
+        }
+        .recommend-card > div:nth-of-type(3) {
+          padding: 15px !important;
+          border-radius: 18px !important;
+        }
       }
-
-      @keyframes growBar { from { transform: scaleX(0); } to { transform: scaleX(1); } }
-      @keyframes cardRise { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }
-      @keyframes ringPop { from { opacity: 0; transform: scale(.84) rotate(-12deg); } to { opacity: 1; transform: scale(1) rotate(0deg); } }
-      @keyframes softGlow { from { box-shadow: 0 24px 56px rgba(37,99,235,0.22); } to { box-shadow: 0 32px 72px rgba(124,58,237,0.28); } }
+      @keyframes growBar {
+        from { transform: scaleX(0); }
+        to { transform: scaleX(1); }
+      }
+      @keyframes cardRise {
+        from { opacity: 0; transform: translateY(18px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      @keyframes ringPop {
+        from { opacity: 0; transform: scale(.84) rotate(-12deg); }
+        to { opacity: 1; transform: scale(1) rotate(0deg); }
+      }
+      @keyframes softGlow {
+        from { box-shadow: 0 24px 56px rgba(37,99,235,0.22); }
+        to { box-shadow: 0 32px 72px rgba(124,58,237,0.28); }
+      }
     `}</style>
   )
 
@@ -1177,7 +1210,7 @@ function App() {
 
 
         <div style={containerStyle}>
-          <div className="hero-grid mobile-step-panel" style={{ ...panelStyle, minHeight: '76vh', padding: '54px', display: 'grid', gridTemplateColumns: 'minmax(0, 1.1fr) minmax(300px, 0.9fr)', gap: '42px', alignItems: 'center' }}>
+          <div style={{ ...panelStyle, minHeight: '76vh', padding: '54px', display: 'grid', gridTemplateColumns: 'minmax(0, 1.1fr) minmax(300px, 0.9fr)', gap: '42px', alignItems: 'center' }}>
             <div>
               <div style={{ ...tagStyle, display: 'inline-flex', marginBottom: '22px' }}>CARD FIT RECOMMENDER</div>
               <h1 style={{ fontSize: '72px', lineHeight: 1.02, margin: '0 0 20px', letterSpacing: '-0.09em', color: '#111827', fontWeight: 950 }}>카드핏</h1>
@@ -1269,7 +1302,7 @@ function App() {
               <p style={{ margin: '8px 0 0', color: '#667085', fontWeight: 700 }}>업로드 결과를 확인하거나 직접 수정할 수 있어요.</p>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+            <div className="spend-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
               {[
                 { label: '식비', icon: '🍽️', value: food, setter: setFood, placeholder: '월 식비' },
                 { label: '교통', icon: '🚇', value: transport, setter: setTransport, placeholder: '월 교통비' },
@@ -1317,95 +1350,134 @@ function App() {
   return (
     <div style={pageStyle}>
       <div style={containerStyle}>
-        <div className="result-header-panel" style={{ ...panelStyle, padding: '42px 34px', textAlign: 'center', marginBottom: '34px', background: 'linear-gradient(135deg, rgba(239,246,255,0.96), rgba(245,243,255,0.96))' }}>
-          <div style={{ ...tagStyle, display: 'inline-flex', marginBottom: '16px' }}>STEP 02</div>
-          <h1 className="result-header-title" style={{ fontSize: '52px', margin: '0 0 16px', letterSpacing: '-0.07em', color: '#111827', fontWeight: 950 }}>추천 결과</h1>
-          <p style={{ color: '#344054', fontSize: '18px', lineHeight: 1.62, margin: '0 auto', maxWidth: '760px', fontWeight: 800 }}>{getSummary()}</p>
+        <div className="result-header-panel" style={{ ...panelStyle, padding: '46px 38px', textAlign: 'center', marginBottom: '48px', background: 'linear-gradient(135deg, rgba(239,246,255,0.96), rgba(245,243,255,0.96))' }}>
+          <div style={{ ...tagStyle, display: 'inline-flex', marginBottom: '18px' }}>STEP 02</div>
+          <h1 className="result-header-title" style={{ fontSize: '56px', margin: '0 0 18px', letterSpacing: '-0.07em', color: '#111827', fontWeight: 950 }}>추천 결과</h1>
+          <p style={{ color: '#344054', fontSize: '19px', lineHeight: 1.65, margin: '0 auto', maxWidth: '760px', fontWeight: 800 }}>{getSummary()}</p>
+        </div>
+
+        <div style={{ ...panelStyle, padding: '38px', marginBottom: '40px' }}>
+          <div className="result-analysis-top" style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '28px', alignItems: 'center', marginBottom: '30px' }}>
+            <div>
+              <h2 style={{ ...sectionTitleStyle, fontSize: '34px', margin: 0, textAlign: 'left' }}>소비패턴 분석</h2>
+              <p style={{ color: '#667085', fontWeight: 800, margin: '12px 0 0', fontSize: '17px', lineHeight: 1.6 }}>
+                {analysisSource === 'statement'
+                  ? `명세서 ${statementSummary.totalRows}건을 기준으로 분석했습니다.`
+                  : '입력한 월평균 소비금액을 기준으로 분석했습니다.'}
+              </p>
+            </div>
+            <div style={{ minWidth: 0, padding: '20px 26px', borderRadius: '26px', background: 'linear-gradient(135deg, #111827 0%, #1d4ed8 100%)', color: '#ffffff', textAlign: 'right', boxShadow: '0 20px 44px rgba(29,78,216,0.22)' }}>
+              <div style={{ fontSize: '14px', fontWeight: 800, opacity: 0.75, marginBottom: '6px' }}>명세서 총 소비</div>
+              <div style={{ fontWeight: 950, fontSize: '28px', letterSpacing: '-0.05em' }}>{totalConsumption.toLocaleString()}원</div>
+            </div>
+          </div>
+
+          <div className="spend-result-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '18px', width: '100%' }}>
+            {spendingItems.map((item, index) => {
+              const percent = totalConsumption ? Math.round((item.value / totalConsumption) * 100) : 0
+              return (
+                <div key={item.key} className="result-spend-card" style={{ animationDelay: `${index * 80}ms`, background: 'linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)', borderRadius: '26px', padding: '24px', border: '1px solid rgba(148,163,184,0.18)', boxShadow: '0 16px 38px rgba(15, 23, 42, 0.07)', position: 'relative', overflow: 'hidden' }}>
+                  <div style={{ position: 'absolute', right: '-28px', top: '-28px', width: '90px', height: '90px', borderRadius: '50%', background: 'rgba(37,99,235,0.07)' }} />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '18px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <div style={{ width: '42px', height: '42px', borderRadius: '15px', background: '#eef4ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px', flexShrink: 0 }}>{item.icon}</div>
+                      <div style={{ color: '#111827', fontWeight: 950, fontSize: '18px', letterSpacing: '-0.04em' }}>{item.label}</div>
+                    </div>
+                    <div style={{ fontSize: '20px', fontWeight: 950, letterSpacing: '-0.05em', color: '#2563eb' }}>{percent}%</div>
+                  </div>
+                  <div style={{ color: '#111827', fontSize: '23px', fontWeight: 950, letterSpacing: '-0.05em' }}>{item.value.toLocaleString()}원</div>
+                  <div style={{ marginTop: '16px', height: '8px', background: '#eef2f7', borderRadius: '999px', overflow: 'hidden' }}>
+                    <div className="spend-bar" style={{ width: `${percent}%`, height: '100%', background: 'linear-gradient(90deg, #2563eb, #7c3aed)', borderRadius: '999px' }} />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         </div>
 
         <div className="result-summary-grid" style={{ marginBottom: '22px', display: 'grid', gridTemplateColumns: '1.15fr 0.85fr', gap: '22px', alignItems: 'stretch' }}>
-          <div className="result-summary-card" style={{ ...panelStyle, padding: '30px', background: 'linear-gradient(135deg, #111827 0%, #1d4ed8 58%, #7c3aed 100%)', color: '#ffffff', position: 'relative', overflow: 'hidden' }}>
+          <div style={{ ...panelStyle, padding: '30px', background: 'linear-gradient(135deg, #111827 0%, #1d4ed8 58%, #7c3aed 100%)', color: '#ffffff', position: 'relative', overflow: 'hidden' }}>
             <div style={{ position: 'absolute', right: '-70px', top: '-80px', width: '220px', height: '220px', borderRadius: '50%', background: 'rgba(255,255,255,0.13)' }} />
+            <div style={{ position: 'absolute', right: '70px', bottom: '-90px', width: '190px', height: '190px', borderRadius: '50%', background: 'rgba(255,255,255,0.08)' }} />
             <div style={{ position: 'relative', zIndex: 1 }}>
               <div style={{ display: 'inline-flex', padding: '8px 13px', borderRadius: '999px', background: 'rgba(255,255,255,0.16)', border: '1px solid rgba(255,255,255,0.18)', fontWeight: 900, fontSize: '13px', marginBottom: '18px' }}>CARD FIT RESULT</div>
               <h2 style={{ margin: 0, fontSize: '34px', letterSpacing: '-0.06em', fontWeight: 950 }}>가장 잘 맞는 카드 TOP {displayedResults.length}</h2>
-              <p style={{ margin: '12px 0 0', color: 'rgba(255,255,255,0.78)', fontWeight: 700, lineHeight: 1.6 }}>소비패턴과 주요 혜택을 기준으로 어울리는 카드를 정리했어요.</p>
+              <p style={{ margin: '12px 0 0', color: 'rgba(255,255,255,0.78)', fontWeight: 700, lineHeight: 1.6 }}>
+                소비패턴과 주요 혜택을 기준으로 어울리는 카드를 정리했어요.
+              </p>
             </div>
           </div>
-          <div className="favorite-box" style={{ ...panelStyle, padding: '26px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+
+          <div style={{ ...panelStyle, padding: '26px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <button onClick={() => setShowFavoritesOnly(!showFavoritesOnly)} style={{ ...buttonSecondary, padding: '16px 28px', borderRadius: '18px', fontSize: '15px', boxShadow: '0 14px 30px rgba(15,23,42,0.08)' }}>
               {showFavoritesOnly ? '전체 카드 보기' : '찜한 카드만 보기'}
             </button>
           </div>
         </div>
 
-        <div className="recommend-grid" style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: isMobile ? '18px' : '24px', marginBottom: isMobile ? '30px' : '36px', width: '100%' }}>
+        <div className="recommend-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '24px', marginBottom: '28px' }}>
           {displayedResults.map((card, index) => {
             const isBest = index === 0
+            const benefitPercent = maxBenefitValue ? Math.round((card.totalBenefit / maxBenefitValue) * 100) : 0
+            const topBenefit = Object.entries(card.categoryBenefits || {}).sort((a, b) => b[1] - a[1])[0]
+            const topBenefitLabel = topBenefit ? categoryLabels[topBenefit[0]] : '혜택'
+            const topBenefitValue = topBenefit ? Math.round(topBenefit[1]) : 0
             return (
-              <div key={card.id} className="recommend-card" style={{ ...panelStyle, padding: isMobile ? '18px' : (isBest ? '30px' : '26px'), position: 'relative', overflow: 'hidden', background: isBest ? 'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(239,246,255,0.96) 100%)' : 'rgba(255,255,255,0.92)', border: isBest ? '1px solid rgba(37,99,235,0.32)' : '1px solid rgba(255,255,255,0.78)', animationDelay: `${index * 110}ms`, width: '100%', borderRadius: isMobile ? '24px' : panelStyle.borderRadius }}>
+              <div
+                key={card.id}
+                className="recommend-card"
+                style={{
+                  ...panelStyle,
+                  padding: isBest ? '30px' : '26px',
+                  position: 'relative',
+                  overflow: 'hidden',
+                  background: isBest
+                    ? 'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(239,246,255,0.96) 100%)'
+                    : 'rgba(255,255,255,0.92)',
+                  border: isBest ? '1px solid rgba(37,99,235,0.32)' : '1px solid rgba(255,255,255,0.78)',
+                  animationDelay: `${index * 110}ms`,
+                }}
+              >
                 <div style={{ position: 'absolute', right: '-46px', top: '-50px', width: '160px', height: '160px', borderRadius: '50%', background: isBest ? 'rgba(37,99,235,0.10)' : 'rgba(15,23,42,0.04)' }} />
-                <div className="recommend-card-top" style={{ marginBottom: '22px', position: 'relative', zIndex: 1 }}>
-                  <div className="recommend-card-badges" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '14px', marginBottom: '18px' }}>
+                <div style={{ marginBottom: '22px', position: 'relative', zIndex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '14px', marginBottom: '18px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', flex: 1 }}>
                       <span style={{ ...tagStyle, background: isBest ? '#111827' : '#eef4ff', color: isBest ? '#ffffff' : '#1d4ed8' }}>TOP {index + 1}</span>
                       {isBest && <span style={{ ...tagStyle, background: '#fff7ed', color: '#ea580c', borderColor: 'rgba(234,88,12,0.16)' }}>BEST PICK</span>}
                       <span style={{ ...tagStyle, background: '#f8fafc', color: '#475467', borderColor: 'rgba(148,163,184,0.18)' }}>{card.cardType === 'credit' ? '신용카드' : '체크카드'}</span>
                     </div>
-                    <button className="recommend-heart" onClick={() => toggleFavorite(card.id)} aria-label="찜하기" style={{ flex: '0 0 auto', width: '46px', height: '46px', borderRadius: '16px', border: '1px solid rgba(148,163,184,0.18)', background: favorites.includes(card.id) ? 'rgba(254,242,242,0.96)' : 'rgba(255,255,255,0.92)', color: favorites.includes(card.id) ? '#ef4444' : '#cbd5e1', fontSize: '23px', cursor: 'pointer', zIndex: 2, boxShadow: '0 10px 24px rgba(15,23,42,0.06)', lineHeight: 1 }}>♥</button>
+                    <button
+                      onClick={() => toggleFavorite(card.id)}
+                      aria-label="찜하기"
+                      style={{ flex: '0 0 auto', width: '46px', height: '46px', borderRadius: '16px', border: '1px solid rgba(148,163,184,0.18)', background: favorites.includes(card.id) ? 'rgba(254,242,242,0.96)' : 'rgba(255,255,255,0.92)', color: favorites.includes(card.id) ? '#ef4444' : '#cbd5e1', fontSize: '23px', cursor: 'pointer', zIndex: 2, boxShadow: '0 10px 24px rgba(15,23,42,0.06)', lineHeight: 1 }}
+                    >♥</button>
                   </div>
-                  <h2 className="recommend-title" style={{ margin: '0 0 8px', fontSize: isMobile ? '22px' : (isBest ? '30px' : '25px'), lineHeight: isMobile ? 1.22 : 1.15, letterSpacing: '-0.06em', color: '#111827', fontWeight: 950, wordBreak: 'keep-all' }}>{card.name}</h2>
-                  <p className="recommend-company" style={{ color: '#667085', margin: 0, fontWeight: 850 }}>{card.company}</p>
+                  <h2 style={{ margin: '0 0 8px', fontSize: isBest ? '30px' : '25px', letterSpacing: '-0.06em', color: '#111827', fontWeight: 950 }}>{card.name}</h2>
+                  <p style={{ color: '#667085', margin: 0, fontWeight: 850 }}>{card.company}</p>
                 </div>
-                {!isMobile && <div className="card-visual-wrap" style={{ marginBottom: '24px', display: 'flex', justifyContent: 'center', position: 'relative', zIndex: 1 }}><CardVisual card={card} /></div>}
-                <div className="benefit-box" style={{ background: 'rgba(248,250,252,0.82)', borderRadius: isMobile ? '18px' : '22px', padding: isMobile ? '14px' : '18px', marginBottom: isMobile ? '12px' : '16px', border: '1px solid rgba(226,232,240,0.85)' }}>
+
+                <div className="card-visual-wrap" style={{ marginBottom: '24px', display: 'flex', justifyContent: 'center', position: 'relative', zIndex: 1 }}><CardVisual card={card} /></div>
+
+
+                <div style={{ background: 'rgba(248,250,252,0.82)', borderRadius: '22px', padding: '18px', marginBottom: '16px', border: '1px solid rgba(226,232,240,0.85)' }}>
                   <div style={{ color: '#667085', fontSize: '13px', fontWeight: 900, marginBottom: '12px' }}>주요 혜택</div>
                   <div style={{ display: 'grid', gap: '10px' }}>
-                    {(card.benefitLines || ['카드 혜택 정보 없음']).slice(0, 2).map((line, benefitIndex) => (
+                    {(card.benefitLines || ['카드 혜택 정보 없음']).slice(0, 3).map((line, benefitIndex) => (
                       <div key={benefitIndex} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', color: '#111827', fontWeight: 850, lineHeight: 1.45 }}>
-                        <span style={{ color: '#2563eb', fontWeight: 950 }}>✓</span><span>{line}</span>
+                        <span style={{ color: '#2563eb', fontWeight: 950 }}>✓</span>
+                        <span>{line}</span>
                       </div>
                     ))}
                   </div>
                 </div>
-                <button className="recommend-detail-btn" onClick={() => window.open(card.link, '_blank')} style={{ ...buttonPrimary, width: '100%', padding: isMobile ? '13px 16px' : '15px 18px', borderRadius: isMobile ? '16px' : '18px', fontSize: isMobile ? '14px' : '16px' }}>카드사에서 자세히 보기</button>
+
+                <button onClick={() => window.open(card.link, '_blank')} style={{ ...buttonPrimary, width: '100%', padding: '15px 18px', borderRadius: '18px' }}>카드사에서 자세히 보기</button>
               </div>
             )
           })}
         </div>
 
-        <div className="analysis-panel" style={{ ...panelStyle, padding: '38px', marginBottom: '40px' }}>
-          <div className="result-analysis-top" style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '28px', alignItems: 'center', marginBottom: '30px' }}>
-            <div>
-              <h2 style={{ ...sectionTitleStyle, fontSize: '34px', margin: 0, textAlign: 'left' }}>소비패턴 분석</h2>
-              <p className="analysis-desc" style={{ color: '#667085', fontWeight: 800, margin: '12px 0 0', fontSize: '17px', lineHeight: 1.6 }}>{analysisSource === 'statement' ? `명세서 ${statementSummary.totalRows}건을 기준으로 분석했습니다.` : '입력한 소비금액을 기준으로 분석했습니다.'}</p>
-            </div>
-            <div className="total-consumption-box" style={{ minWidth: 0, padding: '20px 26px', borderRadius: '26px', background: 'linear-gradient(135deg, #111827 0%, #1d4ed8 100%)', color: '#ffffff', textAlign: 'right', boxShadow: '0 20px 44px rgba(29,78,216,0.22)' }}>
-              <div className="total-label" style={{ fontSize: '14px', fontWeight: 800, opacity: 0.75, marginBottom: '6px' }}>명세서 총 소비</div>
-              <div className="total-amount" style={{ fontWeight: 950, fontSize: '28px', letterSpacing: '-0.05em' }}>{totalConsumption.toLocaleString()}원</div>
-            </div>
-          </div>
-          <div className="spend-result-grid" style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, minmax(0, 1fr))' : 'repeat(3, minmax(0, 1fr))', gap: isMobile ? '14px' : '18px', width: '100%' }}>
-            {spendingItems.map((item, index) => {
-              const percent = totalConsumption ? Math.round((item.value / totalConsumption) * 100) : 0
-              return (
-                <div key={item.key} className="result-spend-card" style={{ animationDelay: `${index * 80}ms`, background: 'linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)', borderRadius: isMobile ? '22px' : '26px', padding: isMobile ? '16px' : '24px', border: '1px solid rgba(148,163,184,0.18)', boxShadow: '0 16px 38px rgba(15, 23, 42, 0.07)', position: 'relative', overflow: 'hidden', minHeight: isMobile ? '142px' : undefined }}>
-                  <div className="spend-bg-circle" style={{ position: 'absolute', right: '-28px', top: '-28px', width: '90px', height: '90px', borderRadius: '50%', background: 'rgba(37,99,235,0.07)' }} />
-                  <div className="spend-card-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '18px' }}>
-                    <div className="spend-card-left" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <div className="spend-icon-box" style={{ width: '42px', height: '42px', borderRadius: '15px', background: '#eef4ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px', flexShrink: 0 }}>{item.icon}</div>
-                      <div className="spend-label-text" style={{ color: '#111827', fontWeight: 950, fontSize: '18px', letterSpacing: '-0.04em' }}>{item.label}</div>
-                    </div>
-                    <div className="spend-percent" style={{ fontSize: '20px', fontWeight: 950, letterSpacing: '-0.05em', color: '#2563eb' }}>{percent}%</div>
-                  </div>
-                  <div className="spend-amount" style={{ color: '#111827', fontSize: '23px', fontWeight: 950, letterSpacing: '-0.05em' }}>{item.value.toLocaleString()}원</div>
-                  <div className="spend-bar-wrap" style={{ marginTop: '16px', height: '8px', background: '#eef2f7', borderRadius: '999px', overflow: 'hidden' }}><div className="spend-bar" style={{ width: `${percent}%`, height: '100%', background: 'linear-gradient(90deg, #2563eb, #7c3aed)', borderRadius: '999px' }} /></div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-        <div className="result-actions" style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
           <button onClick={resetSurvey} style={buttonSecondary}>다시 설문하기</button>
           <button onClick={() => setStep(1)} style={buttonPrimary}>처음으로</button>
         </div>
