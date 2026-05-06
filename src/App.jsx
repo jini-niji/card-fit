@@ -1074,9 +1074,25 @@ function App() {
         .recommend-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
       }
       @media (max-width: 760px) {
-      html, body, #root {
-        width: 100% !important;
-        overflow-x: hidden !important;
+
+        .hero-grid {
+          grid-template-columns: 1fr !important;
+          padding: 28px 22px !important;
+          gap: 24px !important;
+          min-height: auto !important;
+        }
+
+        .hero-grid h1 {
+          font-size: 48px !important;
+          line-height: 1.05 !important;
+          word-break: keep-all !important;
+        }
+
+        .hero-grid p {
+          font-size: 16px !important;
+          line-height: 1.6 !important;
+          word-break: keep-all !important;
+        }
       }
 
       .hero-grid,
@@ -1144,7 +1160,18 @@ function App() {
 
 
         <div style={containerStyle}>
-          <div style={{ ...panelStyle, minHeight: '76vh', padding: '54px', display: 'grid', gridTemplateColumns: 'minmax(0, 1.1fr) minmax(300px, 0.9fr)', gap: '42px', alignItems: 'center' }}>
+        <div
+          className="hero-grid"
+          style={{
+            ...panelStyle,
+            minHeight: '76vh',
+            padding: '54px',
+            display: 'grid',
+            gridTemplateColumns: 'minmax(0, 1.1fr) minmax(300px, 0.9fr)',
+            gap: '42px',
+            alignItems: 'center',
+          }}
+        >
             <div>
               <div style={{ ...tagStyle, display: 'inline-flex', marginBottom: '22px' }}>CARD FIT RECOMMENDER</div>
               <h1 style={{ fontSize: '72px', lineHeight: 1.02, margin: '0 0 20px', letterSpacing: '-0.09em', color: '#111827', fontWeight: 950 }}>카드핏</h1>
