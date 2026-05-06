@@ -177,8 +177,58 @@ function App() {
   ]
 
   const amountColumnCandidates = [
-    '이용금액', '결제금액', '승인금액', '사용금액', '매출금액', '청구금액', '결제원금', '원금', '금액', 'amount'
+    '결제원금', '이용금액', '승인금액', '사용금액', '매출금액', '청구금액', '결제금액', '원금', '금액', 'amount'
   ]
+
+  const unsafeAmountColumnKeywords = [
+    '누적', '누계', '합계', '총계', '월계', '잔액', '입금', '한도', '할인', '면제', '포인트', '적립', '캐시백', '수수료', '연체', '청구예정'
+  ]
+
+  const shouldSkipSheet = (sheetName) => {
+    const normalized = normalizeHeader(sheetName)
+    return ['요약', 'summary', '합계', '청구', '결제', '입금', '포인트', '적립', '캐시백', '혜택', '할부', '안내'].some((keyword) =>
+      normalized.includes(normalizeHeader(keyword))
+    )
+  }
+
+  const isUnsafeAmountHeader = (header) => {
+    const normalized = normalizeHeader(header)
+    return unsafeAmountColumnKeywords.some((keyword) => normalized.includes(normalizeHeader(keyword)))
+  }
+
+  const findAmountColumnIndex = (rawHeaders) => {
+    const headers = rawHeaders.map((header) => normalizeHeader(header))
+
+    // 1순위: 실제 거래 원금/이용금액 계열 컬럼을 우선 사용
+    const preferred = ['결제원금', '이용금액', '승인금액', '사용금액', '매출금액', '청구금액', 'amount']
+    for (const candidate of preferred) {
+      const idx = headers.findIndex((header, index) =>
+        header.includes(normalizeHeader(candidate)) && !isUnsafeAmountHeader(rawHeaders[index])
+      )
+      if (idx >= 0) return idx
+    }
+
+    // 2순위: 단순 '금액' 컬럼. 단, 합계/포인트/할인/잔액 계열은 제외
+    return headers.findIndex((header, index) =>
+      header.includes(normalizeHeader('금액')) && !isUnsafeAmountHeader(rawHeaders[index])
+    )
+  }
+
+  const makeRowKey = (row) => {
+    const date = String(row.date || '').replace(/[^0-9]/g, '')
+    const merchant = normalizeMerchantName(row.merchant)
+    return `${date}|${merchant}|${Math.round(row.amount)}`
+  }
+
+  const dedupeRows = (rows) => {
+    const seen = new Set()
+    return rows.filter((row) => {
+      const key = makeRowKey(row)
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+  }
 
   // 실제 카드 명세서에는 브랜드명이 아니라 법인명/PG사명으로 찍히는 경우가 많아서
   // 단순 키워드가 아니라 "실제 명세서 표기명" 기준으로 최대한 넓게 분류합니다.
@@ -388,7 +438,7 @@ function App() {
     return 'etc'
   }
 
-  const ignoredMerchantKeywords = ['합계', '총계', '소계', '미리입금', '할인,면제', '취소', '입금후잔액']
+  const ignoredMerchantKeywords = ['합계', '총계', '소계', '누계', '월계', '미리입금', '할인,면제', '취소', '입금후잔액', '청구금액합계', '총이용금액', '전월잔액', '결제예정', '결제금액', '입금액']
 
   const parseCsvLine = (line) => {
     const result = []
@@ -445,7 +495,7 @@ function App() {
       const headers = row.map((cell) => normalizeHeader(cell))
       const dateIndex = findColumnIndex(headers, dateColumnCandidates)
       const merchantIndex = findColumnIndex(headers, merchantColumnCandidates)
-      const amountIndex = findColumnIndex(headers, amountColumnCandidates)
+      const amountIndex = findAmountColumnIndex(row)
       let score = 0
       if (dateIndex >= 0) score += 1
       if (merchantIndex >= 0) score += 2
@@ -470,7 +520,7 @@ function App() {
     const headers = rawHeaders.map((header) => normalizeHeader(header))
     const dateIndex = findColumnIndex(headers, dateColumnCandidates)
     const merchantIndex = findColumnIndex(headers, merchantColumnCandidates)
-    const amountIndex = findColumnIndex(headers, amountColumnCandidates)
+    const amountIndex = findAmountColumnIndex(rawHeaders)
 
     console.log(`${sheetName || '명세서'} 컬럼명:`, rawHeaders)
     console.log(`${sheetName || '명세서'} 자동 탐색 결과:`, {
@@ -504,7 +554,7 @@ function App() {
     const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
     const matrix = lines.map((line) => parseCsvLine(line))
     const parsed = parseRowsFromMatrix(matrix, 'CSV')
-    return parsed.length > 0 ? parsed : parseRowsByPattern(matrix, 'CSV')
+    return dedupeRows(parsed.length > 0 ? parsed : parseRowsByPattern(matrix, 'CSV'))
   }
 
   const parseStatementWorkbook = (arrayBuffer) => {
@@ -512,18 +562,23 @@ function App() {
     const rows = []
 
     workbook.SheetNames.forEach((sheetName) => {
-      if (String(sheetName).includes('취소')) return
+      if (shouldSkipSheet(sheetName)) return
+
       const worksheet = workbook.Sheets[sheetName]
       const matrix = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '', raw: false })
       let parsedSheetRows = parseRowsFromMatrix(matrix, sheetName)
-      if (parsedSheetRows.length === 0) {
+
+      // 패턴 기반 파싱은 표 헤더가 없는 단순 명세서에서만 사용합니다.
+      // 요약/합계 영역까지 읽으면 실제 사용금액보다 크게 집계될 수 있어 보수적으로 제한합니다.
+      if (parsedSheetRows.length === 0 && matrix.length <= 120) {
         console.warn(`${sheetName} 헤더 기반 파싱 실패, 패턴 기반 파싱으로 재시도`)
         parsedSheetRows = parseRowsByPattern(matrix, sheetName)
       }
+
       rows.push(...parsedSheetRows)
     })
 
-    return rows
+    return dedupeRows(rows)
   }
 
 
@@ -703,7 +758,7 @@ function App() {
       const text = result.data.text || ''
       setOcrText(text)
   
-      const rows = parseRowsFromOcrText(text)
+      const rows = dedupeRows(parseRowsFromOcrText(text))
       setOcrRows(rows)
   
       if (rows.length === 0) {
