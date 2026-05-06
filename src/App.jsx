@@ -42,6 +42,14 @@ function App() {
   })
 
   const [crawledCards, setCrawledCards] = useState([])
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth <= 760)
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
 
   useEffect(() => {
     localStorage.setItem('favorites', JSON.stringify(favorites))
@@ -1331,11 +1339,11 @@ function App() {
           </div>
         </div>
 
-        <div className="recommend-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '24px', marginBottom: '36px' }}>
+        <div className="recommend-grid" style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: isMobile ? '18px' : '24px', marginBottom: isMobile ? '30px' : '36px', width: '100%' }}>
           {displayedResults.map((card, index) => {
             const isBest = index === 0
             return (
-              <div key={card.id} className="recommend-card" style={{ ...panelStyle, padding: isBest ? '30px' : '26px', position: 'relative', overflow: 'hidden', background: isBest ? 'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(239,246,255,0.96) 100%)' : 'rgba(255,255,255,0.92)', border: isBest ? '1px solid rgba(37,99,235,0.32)' : '1px solid rgba(255,255,255,0.78)', animationDelay: `${index * 110}ms` }}>
+              <div key={card.id} className="recommend-card" style={{ ...panelStyle, padding: isMobile ? '18px' : (isBest ? '30px' : '26px'), position: 'relative', overflow: 'hidden', background: isBest ? 'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(239,246,255,0.96) 100%)' : 'rgba(255,255,255,0.92)', border: isBest ? '1px solid rgba(37,99,235,0.32)' : '1px solid rgba(255,255,255,0.78)', animationDelay: `${index * 110}ms`, width: '100%', borderRadius: isMobile ? '24px' : panelStyle.borderRadius }}>
                 <div style={{ position: 'absolute', right: '-46px', top: '-50px', width: '160px', height: '160px', borderRadius: '50%', background: isBest ? 'rgba(37,99,235,0.10)' : 'rgba(15,23,42,0.04)' }} />
                 <div className="recommend-card-top" style={{ marginBottom: '22px', position: 'relative', zIndex: 1 }}>
                   <div className="recommend-card-badges" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '14px', marginBottom: '18px' }}>
@@ -1346,11 +1354,11 @@ function App() {
                     </div>
                     <button className="recommend-heart" onClick={() => toggleFavorite(card.id)} aria-label="찜하기" style={{ flex: '0 0 auto', width: '46px', height: '46px', borderRadius: '16px', border: '1px solid rgba(148,163,184,0.18)', background: favorites.includes(card.id) ? 'rgba(254,242,242,0.96)' : 'rgba(255,255,255,0.92)', color: favorites.includes(card.id) ? '#ef4444' : '#cbd5e1', fontSize: '23px', cursor: 'pointer', zIndex: 2, boxShadow: '0 10px 24px rgba(15,23,42,0.06)', lineHeight: 1 }}>♥</button>
                   </div>
-                  <h2 className="recommend-title" style={{ margin: '0 0 8px', fontSize: isBest ? '30px' : '25px', letterSpacing: '-0.06em', color: '#111827', fontWeight: 950 }}>{card.name}</h2>
+                  <h2 className="recommend-title" style={{ margin: '0 0 8px', fontSize: isMobile ? '22px' : (isBest ? '30px' : '25px'), lineHeight: isMobile ? 1.22 : 1.15, letterSpacing: '-0.06em', color: '#111827', fontWeight: 950, wordBreak: 'keep-all' }}>{card.name}</h2>
                   <p className="recommend-company" style={{ color: '#667085', margin: 0, fontWeight: 850 }}>{card.company}</p>
                 </div>
-                <div className="card-visual-wrap" style={{ marginBottom: '24px', display: 'flex', justifyContent: 'center', position: 'relative', zIndex: 1 }}><CardVisual card={card} /></div>
-                <div className="benefit-box" style={{ background: 'rgba(248,250,252,0.82)', borderRadius: '22px', padding: '18px', marginBottom: '16px', border: '1px solid rgba(226,232,240,0.85)' }}>
+                {!isMobile && <div className="card-visual-wrap" style={{ marginBottom: '24px', display: 'flex', justifyContent: 'center', position: 'relative', zIndex: 1 }}><CardVisual card={card} /></div>}
+                <div className="benefit-box" style={{ background: 'rgba(248,250,252,0.82)', borderRadius: isMobile ? '18px' : '22px', padding: isMobile ? '14px' : '18px', marginBottom: isMobile ? '12px' : '16px', border: '1px solid rgba(226,232,240,0.85)' }}>
                   <div style={{ color: '#667085', fontSize: '13px', fontWeight: 900, marginBottom: '12px' }}>주요 혜택</div>
                   <div style={{ display: 'grid', gap: '10px' }}>
                     {(card.benefitLines || ['카드 혜택 정보 없음']).slice(0, 2).map((line, benefitIndex) => (
@@ -1360,7 +1368,7 @@ function App() {
                     ))}
                   </div>
                 </div>
-                <button className="recommend-detail-btn" onClick={() => window.open(card.link, '_blank')} style={{ ...buttonPrimary, width: '100%', padding: '15px 18px', borderRadius: '18px' }}>카드사에서 자세히 보기</button>
+                <button className="recommend-detail-btn" onClick={() => window.open(card.link, '_blank')} style={{ ...buttonPrimary, width: '100%', padding: isMobile ? '13px 16px' : '15px 18px', borderRadius: isMobile ? '16px' : '18px', fontSize: isMobile ? '14px' : '16px' }}>카드사에서 자세히 보기</button>
               </div>
             )
           })}
@@ -1377,11 +1385,11 @@ function App() {
               <div className="total-amount" style={{ fontWeight: 950, fontSize: '28px', letterSpacing: '-0.05em' }}>{totalConsumption.toLocaleString()}원</div>
             </div>
           </div>
-          <div className="spend-result-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '18px', width: '100%' }}>
+          <div className="spend-result-grid" style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, minmax(0, 1fr))' : 'repeat(3, minmax(0, 1fr))', gap: isMobile ? '14px' : '18px', width: '100%' }}>
             {spendingItems.map((item, index) => {
               const percent = totalConsumption ? Math.round((item.value / totalConsumption) * 100) : 0
               return (
-                <div key={item.key} className="result-spend-card" style={{ animationDelay: `${index * 80}ms`, background: 'linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)', borderRadius: '26px', padding: '24px', border: '1px solid rgba(148,163,184,0.18)', boxShadow: '0 16px 38px rgba(15, 23, 42, 0.07)', position: 'relative', overflow: 'hidden' }}>
+                <div key={item.key} className="result-spend-card" style={{ animationDelay: `${index * 80}ms`, background: 'linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)', borderRadius: isMobile ? '22px' : '26px', padding: isMobile ? '16px' : '24px', border: '1px solid rgba(148,163,184,0.18)', boxShadow: '0 16px 38px rgba(15, 23, 42, 0.07)', position: 'relative', overflow: 'hidden', minHeight: isMobile ? '142px' : undefined }}>
                   <div className="spend-bg-circle" style={{ position: 'absolute', right: '-28px', top: '-28px', width: '90px', height: '90px', borderRadius: '50%', background: 'rgba(37,99,235,0.07)' }} />
                   <div className="spend-card-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '18px' }}>
                     <div className="spend-card-left" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
