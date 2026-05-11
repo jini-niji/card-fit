@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import * as XLSX from 'xlsx'
 import Tesseract from 'tesseract.js'
-import { cards } from './data/cards'
+import { cards, categoryCards } from './data/cards'
 
 function App() {
   const formatNumber = (value) => {
@@ -31,6 +31,7 @@ function App() {
   const [results, setResults] = useState([])
   const [message, setMessage] = useState('')
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false)
+  const [selectedBenefitCategory, setSelectedBenefitCategory] = useState('fuel')
 
   const [ocrText, setOcrText] = useState('')
   const [ocrRows, setOcrRows] = useState([])
@@ -423,6 +424,50 @@ function App() {
 
   const ignoredMerchantKeywords = ['합계', '총계', '소계', '미리입금', '할인,면제', '취소', '입금후잔액']
 
+  const isLikelyDateCell = (value) => {
+    const text = String(value || '').trim()
+    const digits = text.replace(/[^0-9]/g, '')
+    if (/^\d{4}[-./]\d{1,2}[-./]\d{1,2}/.test(text)) return true
+    if (digits.length === 8) {
+      const year = Number(digits.slice(0, 4))
+      const month = Number(digits.slice(4, 6))
+      const day = Number(digits.slice(6, 8))
+      return year >= 2000 && year <= 2099 && month >= 1 && month <= 12 && day >= 1 && day <= 31
+    }
+    return false
+  }
+
+  const isSummaryOrNonPurchaseRow = (text) => {
+    const normalized = String(text || '').replace(/\s/g, '')
+    const blocked = [
+      '합계', '총계', '소계', '누계', '월합계', '이용금액합계', '청구금액합계',
+      '전월', '당월', '미리입금', '입금', '입금후잔액', '잔액', '한도',
+      '포인트', '적립예정', '할인,면제', '수수료', '연회비', '결제예정금액',
+      '청구예정금액', '이번달결제', '지난달결제'
+    ]
+    if (blocked.some((keyword) => normalized.includes(keyword.replace(/\s/g, '')))) return true
+    if (normalized.includes('취소') || normalized.includes('환불') || normalized.includes('매출취소')) return true
+    return false
+  }
+
+  const dedupeStatementRows = (rows) => {
+    const seen = new Set()
+    return rows.filter((row) => {
+      const key = [
+        normalizeDateText(row.date || ''),
+        normalizeMerchantName(row.merchant || ''),
+        Math.round(Number(row.amount || 0)),
+      ].join('|')
+
+      if (!row.merchant || !row.amount || row.amount <= 0) return false
+      if (Number(row.amount) > 5000000) return false
+      if (isSummaryOrNonPurchaseRow(`${row.date} ${row.merchant} ${row.amount}`)) return false
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+  }
+
   const parseCsvLine = (line) => {
     const result = []
     let current = ''
@@ -451,8 +496,16 @@ function App() {
   const parseAmount = (value) => {
     const text = String(value || '').trim()
     if (!text) return 0
-    const isNegative = text.includes('-') || text.includes('취소')
-    const number = Number(text.replace(/[^0-9.]/g, '')) || 0
+    if (isLikelyDateCell(text)) return 0
+
+    const normalized = text.replace(/\s/g, '')
+    const isNegative = normalized.includes('-') || normalized.includes('취소') || normalized.includes('환불')
+
+    const match = normalized.match(/\d{1,3}(,\d{3})+|\d{4,7}/)
+    if (!match) return 0
+
+    const number = Number(match[0].replace(/,/g, '')) || 0
+    if (number <= 0 || number > 5000000) return 0
     return isNegative ? -number : number
   }
 
@@ -514,7 +567,8 @@ function App() {
 
     if (merchantIndex < 0 || amountIndex < 0) return []
 
-    return usableRows.slice(headerRowIndex + 1).map((cells) => {
+    const parsed = usableRows.slice(headerRowIndex + 1).map((cells) => {
+      const rowText = cells.join(' ')
       const merchant = cells[merchantIndex] || ''
       const amount = parseAmount(cells[amountIndex])
       const category = classifyMerchant(merchant)
@@ -525,12 +579,15 @@ function App() {
         amount,
         category,
         sheetName,
+        rowText,
       }
     }).filter((row) => {
       const merchantText = String(row.merchant || '').replace(/\s/g, '')
       const isIgnored = ignoredMerchantKeywords.some((keyword) => merchantText.includes(keyword.replace(/\s/g, '')))
-      return row.merchant && row.amount > 0 && !isIgnored
+      return row.merchant && row.amount > 0 && !isIgnored && !isSummaryOrNonPurchaseRow(row.rowText)
     })
+
+    return dedupeStatementRows(parsed)
   }
 
   const parseStatementCsvText = (text) => {
@@ -542,21 +599,31 @@ function App() {
 
   const parseStatementWorkbook = (arrayBuffer) => {
     const workbook = XLSX.read(new Uint8Array(arrayBuffer), { type: 'array', raw: false, cellDates: false })
-    const rows = []
 
-    workbook.SheetNames.forEach((sheetName) => {
-      if (String(sheetName).includes('취소')) return
-      const worksheet = workbook.Sheets[sheetName]
-      const matrix = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '', raw: false })
-      let parsedSheetRows = parseRowsFromMatrix(matrix, sheetName)
-      if (parsedSheetRows.length === 0) {
-        console.warn(`${sheetName} 헤더 기반 파싱 실패, 패턴 기반 파싱으로 재시도`)
-        parsedSheetRows = parseRowsByPattern(matrix, sheetName)
-      }
-      rows.push(...parsedSheetRows)
-    })
+    const parsedSheets = workbook.SheetNames
+      .filter((sheetName) => !isSummaryOrNonPurchaseRow(sheetName))
+      .map((sheetName) => {
+        const worksheet = workbook.Sheets[sheetName]
+        const matrix = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '', raw: false })
+        let parsedSheetRows = parseRowsFromMatrix(matrix, sheetName)
+        if (parsedSheetRows.length === 0) {
+          console.warn(`${sheetName} 헤더 기반 파싱 실패, 패턴 기반 파싱으로 재시도`)
+          parsedSheetRows = parseRowsByPattern(matrix, sheetName)
+        }
 
-    return rows
+        return {
+          sheetName,
+          rows: dedupeStatementRows(parsedSheetRows),
+        }
+      })
+      .filter((sheet) => sheet.rows.length > 0)
+
+    if (parsedSheets.length === 0) return []
+
+    const bestSheet = parsedSheets.sort((a, b) => b.rows.length - a.rows.length)[0]
+    console.log('사용한 명세서 시트:', bestSheet.sheetName, bestSheet.rows.length, '건')
+
+    return bestSheet.rows
   }
 
 
@@ -577,14 +644,21 @@ function App() {
       // 날짜 후보: 20260301, 2026-03-01 같은 값
       const dateCell = cells.find((cell) => /^\d{8}$/.test(cell.replace(/[^0-9]/g, '')) || /^\d{4}[-./]\d{1,2}[-./]\d{1,2}/.test(cell)) || ''
 
-      // 금액 후보: 9,220 / 9220 / 32,900 처럼 숫자성 값
+      // 금액 후보: 날짜/카드번호/승인번호/포인트/누계성 숫자는 제외하고 실제 결제금액만 후보로 봅니다.
       const amountCandidates = cells
         .map((cell, index) => ({ cell, index, amount: parseAmount(cell) }))
-        .filter((item) => item.amount > 0 && /[0-9]/.test(item.cell))
+        .filter((item) => {
+          if (item.amount <= 0) return false
+          if (!/[0-9]/.test(item.cell)) return false
+          if (isLikelyDateCell(item.cell)) return false
+          if (String(item.cell).replace(/[^0-9]/g, '').length >= 10) return false
+          if (isSummaryOrNonPurchaseRow(rowText)) return false
+          return true
+        })
 
       if (amountCandidates.length === 0) return
 
-      // 삼성카드는 이용금액이 앞쪽에 있고, 원금/적립금액 등 중복 금액이 뒤에 있으므로 가장 왼쪽 금액을 우선 사용
+      // 실제 이용금액은 보통 가맹점명 오른쪽 첫 번째 금액입니다.
       const amountItem = amountCandidates[0]
 
       // 가맹점 후보: 날짜/이용구분/금액이 아닌 텍스트 중 가장 가맹점명처럼 보이는 값
@@ -619,25 +693,29 @@ function App() {
   }
 
   const calculateStatementSummary = (rows) => {
+    const cleanRows = dedupeStatementRows(rows)
     const totals = { food: 0, transport: 0, cafe: 0, shopping: 0, fuel: 0, etc: 0 }
-    rows.forEach((row) => {
-      totals[row.category] = (totals[row.category] || 0) + row.amount
+
+    cleanRows.forEach((row) => {
+      const category = totals[row.category] !== undefined ? row.category : 'etc'
+      totals[category] += Number(row.amount) || 0
     })
 
-    const months = new Set(rows.map((row) => getMonthKey(row.date)).filter(Boolean))
+    const months = new Set(cleanRows.map((row) => getMonthKey(row.date)).filter(Boolean))
     const monthCount = Math.max(months.size, 1)
+    const divide = (value) => Math.round(value / monthCount)
 
     return {
-      totalRows: rows.length,
+      totalRows: cleanRows.length,
       totalAmount: Object.values(totals).reduce((sum, value) => sum + value, 0),
       months: monthCount,
       monthlyAverage: {
-        food: Math.round(totals.food),
-        transport: Math.round(totals.transport),
-        cafe: Math.round(totals.cafe),
-        shopping: Math.round(totals.shopping),
-        fuel: Math.round(totals.fuel),
-        etc: Math.round(totals.etc),
+        food: divide(totals.food),
+        transport: divide(totals.transport),
+        cafe: divide(totals.cafe),
+        shopping: divide(totals.shopping),
+        fuel: divide(totals.fuel),
+        etc: divide(totals.etc),
       },
     }
   }
@@ -677,48 +755,51 @@ function App() {
       .split(/\r?\n/)
       .map((line) => line.trim())
       .filter(Boolean)
-  
+
     const parsed = []
-  
+
     lines.forEach((line) => {
       const cleanLine = line.replace(/\s+/g, ' ')
-  
-      // 금액 추출: 5,800 / 5800 / 18,900원 형태
-      const amountMatch = cleanLine.match(/(\d{1,3}(,\d{3})+|\d{4,})(원)?/g)
-      if (!amountMatch || amountMatch.length === 0) return
-  
-      const amountText = amountMatch[amountMatch.length - 1]
-      const amount = parseAmount(amountText)
-      if (amount <= 0) return
-  
-      // 날짜 추출: 2026.05.01 / 2026-05-01 / 05.01 형태
-      const dateMatch = cleanLine.match(/(\d{4}[.\-/]\d{1,2}[.\-/]\d{1,2}|\d{1,2}[.\-/]\d{1,2})/)
-      const date = dateMatch ? normalizeDateText(dateMatch[0]) : ''
-  
-      // 가맹점명 추출: 날짜와 금액 제거
+      if (isSummaryOrNonPurchaseRow(cleanLine)) return
+
+      // OCR은 합계/잔액까지 잘못 읽는 경우가 많아서 날짜가 있는 줄만 거래로 인정
+      const dateMatch = cleanLine.match(/(\d{4}[.\-/]\d{1,2}[.\-/]\d{1,2}|\d{2}[.\-/]\d{1,2}[.\-/]\d{1,2}|\d{1,2}[.\-/]\d{1,2})/)
+      if (!dateMatch) return
+
+      const amountMatches = cleanLine.match(/(\d{1,3}(,\d{3})+|\d{4,7})(원)?/g)
+      if (!amountMatches || amountMatches.length === 0) return
+
+      const amountCandidates = amountMatches
+        .map((amountText) => ({ amountText, amount: parseAmount(amountText) }))
+        .filter((item) => item.amount > 0 && item.amount <= 5000000)
+
+      if (amountCandidates.length === 0) return
+
+      // 보통 거래금액은 줄의 마지막 금액이지만, 너무 큰 누계성 숫자는 위에서 제외
+      const { amountText, amount } = amountCandidates[amountCandidates.length - 1]
+
       let merchant = cleanLine
-        .replace(dateMatch?.[0] || '', '')
-        .replace(amountText, '')
-        .replace(/승인|일시불|체크|신용|국내|이용|결제|원/g, '')
+        .replace(dateMatch[0], ' ')
+        .replace(amountText, ' ')
+        .replace(/승인|일시불|체크|신용|국내|해외|이용|결제|원|본인|가족/g, ' ')
+        .replace(/[0-9]{2,}/g, ' ')
+        .replace(/\s+/g, ' ')
         .trim()
-  
-      // 너무 짧거나 숫자만 남으면 제외
+
       if (!merchant || merchant.length < 2 || /^[0-9\s,.-]+$/.test(merchant)) return
-  
-      const category = classifyMerchant(merchant)
-  
+      if (isSummaryOrNonPurchaseRow(merchant)) return
+
       parsed.push({
-        date,
+        date: normalizeDateText(dateMatch[0]),
         merchant,
         amount,
-        category,
+        category: classifyMerchant(merchant),
         sheetName: 'OCR',
       })
     })
-  
-    return parsed
-  }
 
+    return dedupeStatementRows(parsed)
+  }
   const handleImageStatementUpload = async (event) => {
     const file = event.target.files?.[0]
     if (!file) return
@@ -754,7 +835,7 @@ function App() {
       setFuel(formatNumber(String(summary.monthlyAverage.fuel)))
       setEtc(formatNumber(String(summary.monthlyAverage.etc)))
   
-      setUploadMessage(`${rows.length}건의 소비내역 분석이 완료되었습니다.`)
+      setUploadMessage(`${summary.totalRows}건의 소비내역 분석 완료 · 총 ${summary.totalAmount.toLocaleString()}원 · ${summary.months}개월 기준 월평균으로 반영되었습니다.`)
     } catch (error) {
       console.error(error)
       setUploadMessage('이미지 OCR 처리 중 오류가 발생했습니다.')
@@ -812,7 +893,7 @@ function App() {
         setShopping(formatNumber(String(summary.monthlyAverage.shopping)))
         setFuel(formatNumber(String(summary.monthlyAverage.fuel)))
         setEtc(formatNumber(String(summary.monthlyAverage.etc)))
-        setUploadMessage(`${rows.length}건의 소비내역 분석이 완료되었습니다.`)
+        setUploadMessage(`${summary.totalRows}건의 소비내역 분석 완료 · 총 ${summary.totalAmount.toLocaleString()}원 · ${summary.months}개월 기준 월평균으로 반영되었습니다.`)
       } catch (error) {
         console.error(error)
         setUploadMessage('명세서 분석 중 오류가 발생했습니다. CSV 또는 엑셀 파일 형식인지 확인해주세요.')
@@ -870,6 +951,17 @@ function App() {
 
   const calculateBenefitByCategory = (amount, rate, limit) => Math.min(amount * rate, limit)
 
+  const getCardBenefitKeys = (card) => {
+    return ['food', 'transport', 'cafe', 'shopping', 'fuel', 'etc'].filter((key) => getBenefitRate(card, key) > 0)
+  }
+
+  const getSpendingRank = (spending) => {
+    return Object.entries(spending)
+      .filter(([, amount]) => amount > 0)
+      .sort((a, b) => b[1] - a[1])
+      .map(([key]) => key)
+  }
+
   const calculateCardScore = (card, spending) => {
     const keys = ['food', 'transport', 'cafe', 'shopping', 'fuel', 'etc']
     const totalSpending = keys.reduce((sum, key) => sum + spending[key], 0)
@@ -877,39 +969,60 @@ function App() {
     const annualFee = Number(card.annualFee || 0)
     const isEligible = totalSpending >= requiredPreviousMonth
 
-    // 졸업작품 시연에서는 3개월 명세서 기반 '예상 혜택'을 보여주는 것이 핵심이므로,
-    // 전월실적 미달이어도 예상 혜택은 계산하고, 최종점수에서만 감점합니다.
-    // 이렇게 해야 CSV 샘플 금액이 작아도 결과가 전부 0점으로 보이지 않습니다.
-    const eligibilityNotice = !isEligible && requiredPreviousMonth > 0
-      ? ` 단, 소비금액이 전월실적 조건 ${requiredPreviousMonth.toLocaleString()}원보다 낮아 실제 혜택 적용에는 제한이 있을 수 있습니다.`
-      : ''
-
     const categoryBenefits = keys.reduce((acc, key) => {
-      acc[key] = calculateBenefitByCategory(spending[key], getBenefitRate(card, key), getBenefitLimit(card, key))
+      acc[key] = calculateBenefitByCategory(
+        spending[key],
+        getBenefitRate(card, key),
+        getBenefitLimit(card, key)
+      )
       return acc
     }, {})
 
     const totalBenefit = Object.values(categoryBenefits).reduce((sum, value) => sum + value, 0)
-    const estimatedPoint = Math.round(totalBenefit * 0.4)
-    const estimatedDiscount = Math.round(totalBenefit * 0.6)
+    const monthlyFee = Math.round(annualFee / 12)
+    const netBenefit = Math.max(0, totalBenefit - monthlyFee)
 
-    const spendingWeights = keys.reduce((acc, key) => {
-      acc[key] = totalSpending > 0 ? spending[key] / totalSpending : 0
-      return acc
-    }, {})
+    const spendingRank = getSpendingRank(spending)
+    const top1 = spendingRank[0]
+    const top2 = spendingRank[1]
 
-    const weightedBenefitRate = keys.reduce((sum, key) => sum + getBenefitRate(card, key) * spendingWeights[key], 0)
-    const benefitScore = Math.min(totalBenefit / Math.max(totalSpending * 0.05, 1), 1) * 70
-    const fitScore = Math.min(weightedBenefitRate / 0.1, 1) * 20
-    const feeScore = annualFee === 0 ? 10 : Math.max(0, 10 - annualFee / 2000)
-    const eligibilityPenalty = !isEligible && requiredPreviousMonth > 0 ? 10 : 0
-    const finalScore = Math.max(0, Math.round((benefitScore + fitScore + feeScore - eligibilityPenalty) * 10) / 10)
+    // 입력 금액 변화가 추천 순위에 직접 반영되도록 소비 상위 카테고리와 카드 혜택 카테고리의 일치도를 별도 점수화
+    const fitScore = keys.reduce((sum, key) => {
+      const spendingWeight = totalSpending > 0 ? spending[key] / totalSpending : 0
+      const rate = getBenefitRate(card, key)
+      const limit = getBenefitLimit(card, key)
+      const limitFactor = limit >= 999999 ? 1 : Math.min(1, limit / Math.max(spending[key] * Math.max(rate, 0.01), 1))
+      return sum + spendingWeight * Math.min(rate / 0.1, 1) * limitFactor
+    }, 0) * 35
+
+    const benefitScore = Math.min(netBenefit / Math.max(totalSpending * 0.05, 1), 1) * 45
+
+    // 가장 많이 쓴 항목에 혜택이 있으면 강하게 가산, 2순위 항목도 약하게 가산
+    const dominantBonus =
+      (top1 && getBenefitRate(card, top1) > 0 ? 14 : 0) +
+      (top2 && getBenefitRate(card, top2) > 0 ? 6 : 0)
+
+    // 전월실적은 결과를 0으로 만들지 않고 감점만 적용
+    const eligibilityPenalty = !isEligible && requiredPreviousMonth > 0 ? 12 : 0
+    const feePenalty = annualFee > 0 ? Math.min(8, annualFee / 5000) : 0
+
+    const finalScore = Math.max(
+      0,
+      Math.round((benefitScore + fitScore + dominantBonus - eligibilityPenalty - feePenalty) * 10) / 10
+    )
+
     const matchRate = Math.min(100, Math.round(finalScore))
+    const estimatedDiscount = Math.round(totalBenefit * 0.6)
+    const estimatedPoint = Math.round(totalBenefit * 0.4)
 
     const topCategory = Object.entries(categoryBenefits).sort((a, b) => b[1] - a[1])[0]
     const topCategoryText = topCategory && topCategory[1] > 0
       ? `${categoryLabels[topCategory[0]]}에서 약 ${Math.round(topCategory[1]).toLocaleString()}원의 혜택이 가장 크게 계산되었습니다.`
       : '입력한 소비 항목에서 계산 가능한 혜택이 크지 않습니다.'
+
+    const eligibilityNotice = !isEligible && requiredPreviousMonth > 0
+      ? ` 단, 소비금액이 전월실적 조건 ${requiredPreviousMonth.toLocaleString()}원보다 낮아 실제 혜택 적용에는 제한이 있을 수 있습니다.`
+      : ''
 
     const availableBenefits = keys
       .filter((key) => getBenefitRate(card, key) > 0)
@@ -921,6 +1034,7 @@ function App() {
       previousMonth: requiredPreviousMonth,
       annualFee,
       totalBenefit,
+      netBenefit,
       estimatedPoint,
       estimatedDiscount,
       matchRate,
@@ -929,9 +1043,9 @@ function App() {
       availableBenefits,
       reason: `${getReason(card.name)} ${topCategoryText}${eligibilityNotice}`,
       isEligible,
+      benefitKeys: getCardBenefitKeys(card),
     }
   }
-
   const spending = useMemo(() => ({
     food: getNumber(food),
     transport: getNumber(transport),
@@ -983,7 +1097,23 @@ function App() {
       return
     }
 
-    const sorted = calculated.sort((a, b) => b.finalScore - a.finalScore).slice(0, 3)
+    // 추천 결과가 고정되지 않도록 최종점수 → 예상혜택 → 연회비 순으로 정렬
+    const sorted = calculated
+      .sort((a, b) => {
+        if (b.finalScore !== a.finalScore) return b.finalScore - a.finalScore
+        if (b.totalBenefit !== a.totalBenefit) return b.totalBenefit - a.totalBenefit
+        return a.annualFee - b.annualFee
+      })
+      .slice(0, 3)
+
+    console.table(sorted.map((card) => ({
+      카드명: card.name,
+      점수: card.finalScore,
+      예상혜택: Math.round(card.totalBenefit),
+      순혜택: Math.round(card.netBenefit || card.totalBenefit),
+      혜택카테고리: card.benefitKeys?.map((key) => categoryLabels[key]).join(', '),
+    })))
+
     setResults(sorted)
     setMessage('')
     setShowFavoritesOnly(false)
@@ -1015,6 +1145,16 @@ function App() {
   ]
 
   const sampleRows = statementRows.slice(0, 5)
+
+  const benefitCategoryTabs = [
+    { key: 'fuel', label: '주유', icon: '⛽', description: '주유소·충전소·차량관리 혜택 중심' },
+    { key: 'shopping', label: '쇼핑', icon: '🛍️', description: '온라인쇼핑·백화점·대형몰 혜택 중심' },
+    { key: 'delivery', label: '배달앱/간편결제', icon: '🛵', description: '배달앱·음식점·간편결제 혜택 중심' },
+    { key: 'mart', label: '마트/교육비', icon: '🛒', description: '대형마트·온라인장보기·교육비 혜택 중심' },
+  ]
+
+  const selectedBenefitTab = benefitCategoryTabs.find((tab) => tab.key === selectedBenefitCategory) || benefitCategoryTabs[0]
+  const selectedBenefitCards = categoryCards?.[selectedBenefitCategory] || []
 
   const CardVisual = ({ card }) => (
     <div style={{
@@ -1098,6 +1238,19 @@ function App() {
       }
       .spend-input-card:hover .amount-pill {
         background: #f8fbff !important;
+        border-color: rgba(37, 99, 235, 0.28) !important;
+      }
+
+      .benefit-tab-button:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 14px 30px rgba(37, 99, 235, 0.12) !important;
+      }
+      .benefit-explore-card {
+        transition: transform 220ms cubic-bezier(.2,.8,.2,1), box-shadow 220ms ease, border-color 220ms ease;
+      }
+      .benefit-explore-card:hover {
+        transform: translateY(-6px);
+        box-shadow: 0 26px 58px rgba(15, 23, 42, 0.12) !important;
         border-color: rgba(37, 99, 235, 0.28) !important;
       }
 
@@ -1234,6 +1387,29 @@ function App() {
 
         .card-visual-wrap {
           display: none !important;
+        }
+
+        .benefit-category-tabs {
+          grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        }
+
+        .benefit-explore-grid {
+          grid-template-columns: 1fr !important;
+        }
+
+        .benefit-section-panel {
+          padding: 22px 18px !important;
+          border-radius: 28px !important;
+        }
+
+        .benefit-section-panel h2 {
+          font-size: 26px !important;
+          line-height: 1.2 !important;
+        }
+
+        .benefit-explore-card {
+          padding: 18px !important;
+          border-radius: 22px !important;
         }
 
         .recommend-card button[aria-label="찜하기"] {
@@ -1541,6 +1717,94 @@ function App() {
           })}
         </div>
 
+        <div className="benefit-section-panel" style={{ ...panelStyle, padding: '34px', marginBottom: '40px', overflow: 'hidden', position: 'relative' }}>
+          <div style={{ position: 'absolute', right: '-80px', top: '-90px', width: '220px', height: '220px', borderRadius: '50%', background: 'rgba(37,99,235,0.07)' }} />
+          <div style={{ position: 'relative', zIndex: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '18px', marginBottom: '22px', flexWrap: 'wrap' }}>
+              <div>
+                <div style={{ display: 'inline-flex', padding: '8px 12px', borderRadius: '999px', background: '#eff6ff', color: '#1d4ed8', border: '1px solid rgba(37,99,235,0.12)', fontSize: '13px', fontWeight: 950, marginBottom: '12px' }}>
+                  BENEFIT CARD VIEW
+                </div>
+                <h2 style={{ ...sectionTitleStyle, fontSize: '34px', margin: 0, textAlign: 'left' }}>혜택별 인기 카드</h2>
+                <p style={{ color: '#667085', fontWeight: 800, margin: '10px 0 0', fontSize: '16px', lineHeight: 1.6 }}>
+                  맞춤 추천 결과와 별도로, 원하는 혜택 카테고리의 카드도 바로 확인할 수 있어요.
+                </p>
+              </div>
+              <div style={{ padding: '14px 18px', borderRadius: '20px', background: 'rgba(248,250,252,0.9)', border: '1px solid rgba(226,232,240,0.9)', color: '#475467', fontSize: '14px', fontWeight: 850, lineHeight: 1.5 }}>
+                현재 선택: <strong style={{ color: '#1d4ed8' }}>{selectedBenefitTab.icon} {selectedBenefitTab.label}</strong><br />
+                {selectedBenefitTab.description}
+              </div>
+            </div>
+
+            <div className="benefit-category-tabs" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '12px', marginBottom: '22px' }}>
+              {benefitCategoryTabs.map((tab) => {
+                const selected = selectedBenefitCategory === tab.key
+                return (
+                  <button
+                    key={tab.key}
+                    className="benefit-tab-button"
+                    onClick={() => setSelectedBenefitCategory(tab.key)}
+                    style={{
+                      border: selected ? '1px solid rgba(37,99,235,0.55)' : '1px solid rgba(148,163,184,0.22)',
+                      background: selected ? 'linear-gradient(135deg, #111827 0%, #2563eb 100%)' : 'rgba(255,255,255,0.86)',
+                      color: selected ? '#ffffff' : '#344054',
+                      borderRadius: '18px',
+                      padding: '15px 12px',
+                      cursor: 'pointer',
+                      fontWeight: 950,
+                      fontSize: '15px',
+                      boxShadow: selected ? '0 16px 32px rgba(37,99,235,0.22)' : '0 10px 24px rgba(15,23,42,0.05)',
+                    }}
+                  >
+                    <span style={{ display: 'block', fontSize: '22px', marginBottom: '6px' }}>{tab.icon}</span>
+                    {tab.label}
+                  </button>
+                )
+              })}
+            </div>
+
+            <div className="benefit-explore-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: '14px' }}>
+              {selectedBenefitCards.map((card, index) => (
+                <div
+                  key={`${selectedBenefitCategory}-${card.id}`}
+                  className="benefit-explore-card"
+                  style={{
+                    background: 'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(248,251,255,0.96) 100%)',
+                    border: '1px solid rgba(148,163,184,0.18)',
+                    borderRadius: '24px',
+                    padding: '20px',
+                    boxShadow: '0 16px 36px rgba(15,23,42,0.07)',
+                    position: 'relative',
+                    overflow: 'hidden',
+                  }}
+                >
+                  <div style={{ position: 'absolute', right: '-34px', top: '-34px', width: '100px', height: '100px', borderRadius: '50%', background: 'rgba(37,99,235,0.07)' }} />
+                  <div style={{ position: 'relative', zIndex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: '14px' }}>
+                      <span style={{ ...tagStyle, background: '#eff6ff', color: '#1d4ed8', borderColor: 'rgba(37,99,235,0.14)' }}>TOP {index + 1}</span>
+                      <span style={{ fontSize: '21px' }}>{selectedBenefitTab.icon}</span>
+                    </div>
+                    <h3 style={{ margin: '0 0 8px', fontSize: '18px', lineHeight: 1.25, letterSpacing: '-0.05em', color: '#111827', fontWeight: 950, wordBreak: 'keep-all' }}>{card.name}</h3>
+                    <p style={{ margin: '0 0 14px', color: '#667085', fontWeight: 850, fontSize: '14px' }}>{card.company}</p>
+                    <div style={{ display: 'grid', gap: '8px', marginBottom: '16px' }}>
+                      {(card.benefitLines || []).slice(0, 3).map((line, benefitIndex) => (
+                        <div key={benefitIndex} style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', color: '#111827', fontSize: '14px', fontWeight: 800, lineHeight: 1.45 }}>
+                          <span style={{ color: '#2563eb', fontWeight: 950 }}>✓</span>
+                          <span>{line}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ borderTop: '1px solid rgba(226,232,240,0.9)', paddingTop: '12px', display: 'grid', gap: '6px', color: '#667085', fontSize: '13px', fontWeight: 800 }}>
+                      <div>연회비: {card.annualFeeText}</div>
+                      <div>조건: {card.requiredSpend}</div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
         <div style={{ ...panelStyle, padding: '38px', marginBottom: '40px' }}>
           <div className="result-analysis-top" style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '28px', alignItems: 'center', marginBottom: '30px' }}>
             <div>
@@ -1590,3 +1854,4 @@ function App() {
 }
 
 export default App
+
